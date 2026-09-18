@@ -241,3 +241,24 @@ class KnowledgeStore:
                     (relation["subject_key"], relation["relation"],
                      relation["object_key"], relation["source_id"], now),
                 )
+
+
+    def sync_health(self) -> dict:
+        """Return local synchronization health without contacting Google."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """SELECT started_at,completed_at,status,source_count,record_count,error
+                   FROM sync_runs ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            current = conn.execute(
+                "SELECT COUNT(*) FROM knowledge WHERE origin='canonical' AND status='current'"
+            ).fetchone()[0]
+            relations = conn.execute(
+                "SELECT COUNT(*) FROM knowledge_relations WHERE status='current'"
+            ).fetchone()[0]
+        return {
+            "last_sync": dict(row) if row else None,
+            "canonical_records": current,
+            "relations": relations,
+        }
