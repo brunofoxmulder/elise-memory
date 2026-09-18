@@ -79,6 +79,14 @@ class KnowledgeStore:
                     record_count INTEGER NOT NULL DEFAULT 0,
                     error TEXT
                 );
+                CREATE TABLE IF NOT EXISTS sync_source_stats (
+                    sync_run_id INTEGER NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_rows INTEGER NOT NULL,
+                    compiled_count INTEGER NOT NULL,
+                    PRIMARY KEY(sync_run_id, source_name),
+                    FOREIGN KEY(sync_run_id) REFERENCES sync_runs(id)
+                );
                 """
             )
 
@@ -132,6 +140,7 @@ class KnowledgeStore:
         *,
         expected_min_ratio: float = 0.70,
         relations: list[dict] | None = None,
+        source_stats: dict[str, tuple[int, int]] | None = None,
     ) -> dict:
         """Atomically publish a complete canonical snapshot.
 
@@ -152,6 +161,20 @@ class KnowledgeStore:
             ).fetchone()[0]
             if current_count and len(compiled) < current_count * expected_min_ratio:
                 raise ValueError("canonical_snapshot_volume_drop")
+
+            if source_stats:
+                previous_run = conn.execute(
+                    "SELECT id FROM sync_runs WHERE status='success' ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if previous_run:
+                    previous = dict(conn.execute(
+                        "SELECT source_name, compiled_count FROM sync_source_stats WHERE sync_run_id=?",
+                        (previous_run[0],),
+                    ).fetchall())
+                    for name, (_, count) in source_stats.items():
+                        old = previous.get(name)
+                        if old and count < old * expected_min_ratio:
+                            raise ValueError(f"canonical_source_volume_drop:{name}")
 
             run = conn.execute(
                 "INSERT INTO sync_runs(started_at,status,source_count,record_count) "
@@ -218,11 +241,19 @@ class KnowledgeStore:
                          relation["object_key"], relation["source_id"], now),
                     )
 
+            if source_stats:
+                for name, (raw_count, compiled_count) in source_stats.items():
+                    conn.execute(
+                        """INSERT INTO sync_source_stats
+                        (sync_run_id,source_name,source_rows,compiled_count)
+                        VALUES (?,?,?,?)""",
+                        (run, name, raw_count, compiled_count),
+                    )
             conn.execute(
                 """UPDATE sync_runs SET completed_at=?, status='success',
                    source_count=?, record_count=? WHERE id=?""",
                 (datetime.now(timezone.utc).isoformat(),
-                 len({x.source_id.split(':',1)[0] for x,_ in compiled}),
+                 len(source_stats) if source_stats else 0,
                  len(compiled), run),
             )
         return {"records": len(compiled), "changed": changed, "deactivated": deactivated}
