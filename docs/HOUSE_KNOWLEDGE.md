@@ -56,3 +56,12 @@ Le lecteur nocturne utilise l'API Google Sheets v4 avec le scope strict `spreads
 Pour une exécution autonome sur HAOS, l'option préparée est un compte de service dédié dont le fichier d'identifiants est fourni au conteneur de manière sécurisée. Les seuls classeurs nécessaires devront être partagés avec ce compte. La clé privée ne doit jamais être placée dans GitHub, dans SQLite, dans les logs ou dans le jumeau numérique.
 
 Google recommande les identifiants éphémères lorsqu'ils sont disponibles et avertit du risque des clés de compte de service. HAOS n'étant pas une ressource Google Cloud à laquelle on peut simplement attacher un compte de service, le choix opérationnel final des identifiants reste à valider avant déploiement. Le code actuel prépare le lecteur mais ne configure ni ne déploie aucun secret.
+
+
+## Orchestrateur de synchronisation
+
+L'orchestrateur lit d'abord l'ensemble des sources obligatoires et compile toutes les connaissances en mémoire. Aucune mutation SQLite n'est faite pendant cette phase. Une panne Google ou une dérive de schéma avant publication laisse donc la vue canonique précédente intacte.
+
+Une fois les cinq sources lues et compilées, le snapshot canonique est publié puis les relations fonctionnelles validées sont remplacées par leur vue dérivée courante. Le rapport de synchronisation expose le nombre de lignes source par classeur logique, le nombre de connaissances compilées, les changements, désactivations et relations.
+
+Le déclenchement nocturne n'est pas encore activé : l'heure et le mécanisme d'ordonnancement restent séparés de la logique de synchronisation afin de pouvoir tester celle-ci sans modifier Home Assistant.
