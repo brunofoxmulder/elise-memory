@@ -3,6 +3,8 @@ description: Mémoire locale déterministe de Maison Cognitive
 version: "0.1.0-dev.8"
 slug: elise_memory
 init: false
+hassio_api: true
+homeassistant_api: true
 arch:
   - amd64
 startup: application
