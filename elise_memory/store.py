@@ -1,9 +1,10 @@
-"""SQLite persistence layer.
+"""SQLite persistence for Élise Memory.
 
-The store owns only Élise Memory data. It never writes to Home Assistant.
+This module owns only the app's private database. It never writes to Home Assistant.
 """
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import MemoryCreate, MemoryRecord
@@ -26,7 +27,7 @@ class MemoryStore:
                     source TEXT NOT NULL,
                     valid_from TEXT,
                     valid_until TEXT,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    created_at TEXT NOT NULL
                 )
                 """
             )
@@ -36,12 +37,13 @@ class MemoryStore:
             )
 
     def add(self, item: MemoryCreate) -> MemoryRecord:
+        created_at = datetime.now(timezone.utc).isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO memories
-                    (kind, key, value, source, valid_from, valid_until)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (kind, key, value, source, valid_from, valid_until, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.kind,
@@ -50,6 +52,7 @@ class MemoryStore:
                     item.source,
                     item.valid_from.isoformat() if item.valid_from else None,
                     item.valid_until.isoformat() if item.valid_until else None,
+                    created_at,
                 ),
             )
             row = conn.execute(
@@ -62,7 +65,16 @@ class MemoryStore:
             ).fetchone()
         return self._record(row)
 
-    def find(self, kind: str, key: str) -> list[MemoryRecord]:
+    def find(
+        self,
+        kind: str,
+        key: str,
+        *,
+        at: datetime | None = None,
+        include_inactive: bool = False,
+    ) -> list[MemoryRecord]:
+        """Return newest-first records, optionally restricted to temporal validity."""
+        at = at or datetime.now(timezone.utc)
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 """
@@ -74,7 +86,21 @@ class MemoryStore:
                 """,
                 (kind, key),
             ).fetchall()
-        return [self._record(row) for row in rows]
+
+        records = [self._record(row) for row in rows]
+        if include_inactive:
+            return records
+        return [record for record in records if self._is_active(record, at)]
+
+    @staticmethod
+    def _is_active(record: MemoryRecord, at: datetime) -> bool:
+        if record.kind != "temporal":
+            return True
+        if record.valid_from and at < record.valid_from:
+            return False
+        if record.valid_until and at >= record.valid_until:
+            return False
+        return True
 
     @staticmethod
     def _record(row: tuple) -> MemoryRecord:
