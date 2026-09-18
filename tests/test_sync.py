@@ -21,21 +21,25 @@ def sources():
       "Référentiel métier":[
         ["Domaine","Fonction métier","Entité Home Assistant actuelle","Type","Valeur métier","Criticité","Source officielle"],
         ["Protection","Volet salon","cover.volet_salon_2","Cover","Position","A","Oui"]],
-      "Mémoire IA":[["ID connaissance","Domaine","Connaissance","Statut"]],
+      "Mémoire IA":[
+        ["ID connaissance","Domaine","Connaissance","Statut"],
+        ["K1","Maison","Connaissance validée","Validé"]],
       "09_Relations fonctionnelles":[
         ["Relation_ID","Source_ID","Relation","Cible_ID","Statut"],
         ["R1","cover.volet_salon_2","piloté par","automation.nuit","Validé / actif"]],
       "Automatisations":[
         ["Nom de l'automatisation","Domaine","Descriptif","Production","Statut test"],
         ["Nuit","Protection","Ferme volet","yaml","Validé"]],
-      "Scripts Pyscript":[["ID","Nom du fichier","Service HA exposé","Domaine","Rôle","Statut"]],
+      "Scripts Pyscript":[
+        ["ID","Nom du fichier","Service HA exposé","Domaine","Rôle","Statut"],
+        ["S1","script.py","pyscript.s1","Maison","Service actif","Production validée"]],
     }
 
 
 def test_full_sync_publishes_only_after_all_sources_compile(tmp_path):
     store=KnowledgeStore(tmp_path/"m.sqlite3"); store.initialize()
     report=synchronize_canonical(store,FakeReader(sources()))
-    assert report.compiled_records==2
+    assert report.compiled_records==4
     assert report.relations==1
     assert store.active("cover.volet_salon_2")
 
@@ -78,7 +82,7 @@ def test_sync_rejects_semantically_empty_required_source_before_publish(tmp_path
     db = tmp_path / "memory.db"
     store = KnowledgeStore(db)
     store.initialize()
-    reader = EmptyRelationsReader()
+    reader = EmptyRelationsReader(sources())
     with pytest.raises(ValueError, match="canonical_source_compiled_empty:relations"):
         synchronize_canonical(store, reader)
     assert store.sync_health()["canonical_records"] == 0
