@@ -1,5 +1,5 @@
 name: "Élise Memory"
-version: "0.1.0-dev.5"
+version: "0.1.0-dev.6"
 slug: "elise_memory"
 description: "Mémoire locale déterministe de Maison Cognitive."
 arch:
