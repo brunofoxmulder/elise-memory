@@ -1,3 +1,4 @@
+import pytest
 import hashlib
 
 from elise_memory.knowledge import KnowledgeCreate, KnowledgeStore
