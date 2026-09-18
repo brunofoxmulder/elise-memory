@@ -36,3 +36,14 @@ Garanties :
 - dérive anormale de volume rejetée et signalée.
 
 La cadence nocturne sera configurable ; aucune heure précise n'est imposée tant qu'elle n'a pas été validée.
+
+
+## Publication transactionnelle
+
+Une compilation canonique complète est publiée en une transaction SQLite. Avant bascule :
+- snapshot vide interdit ;
+- identité canonique dupliquée interdite ;
+- chute de volume supérieure au seuil de sécurité interdite ;
+- une erreur laisse intégralement en place la dernière vue valide.
+
+Lors d'une publication valide, les contenus inchangés ne sont pas dupliqués, les contenus modifiés supersèdent leur version précédente et les connaissances disparues de la source deviennent inactives sans effacement historique. La couche REX n'est jamais modifiée par une synchronisation canonique.
