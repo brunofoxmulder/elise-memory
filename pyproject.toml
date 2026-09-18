@@ -1,6 +1,6 @@
 [project]
 name = "elise-memory"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.5"
 description = "Local deterministic memory service for Maison Cognitive"
 requires-python = ">=3.12"
 dependencies = [
