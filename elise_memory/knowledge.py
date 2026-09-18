@@ -328,8 +328,26 @@ class KnowledgeStore:
             relations = conn.execute(
                 "SELECT COUNT(*) FROM knowledge_relations WHERE status='current'"
             ).fetchone()[0]
+        sources = {}
+        if row and row["status"] == "success":
+            with sqlite3.connect(self.db_path) as conn:
+                latest = conn.execute(
+                    "SELECT id FROM sync_runs WHERE status='success' ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if latest:
+                    for name, raw_count, compiled_count in conn.execute(
+                        """SELECT source_name,source_rows,compiled_count
+                           FROM sync_source_stats WHERE sync_run_id=?
+                           ORDER BY source_name""",
+                        (latest[0],),
+                    ).fetchall():
+                        sources[name] = {
+                            "source_rows": raw_count,
+                            "compiled_count": compiled_count,
+                        }
         return {
             "last_sync": dict(row) if row else None,
             "canonical_records": current,
             "relations": relations,
+            "sources": sources,
         }
