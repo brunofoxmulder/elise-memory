@@ -51,9 +51,9 @@ def synchronize_canonical(store: KnowledgeStore, reader: GoogleSheetsReader) -> 
 
     # No database mutation has happened before this point.
     result = store.apply_canonical_snapshot(
-        [(entry.item, entry.content_hash) for entry in compiled]
+        [(entry.item, entry.content_hash) for entry in compiled],
+        relations=relations,
     )
-    store.replace_canonical_relations(relations)
     return SyncReport(
         source_rows=counts,
         compiled_records=result["records"],
