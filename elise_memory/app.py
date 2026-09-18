@@ -10,16 +10,24 @@ from .opening_context import OpeningContext, OpeningContextRequest, build_openin
 from .ha_reader import HomeAssistantReader
 from .session import GreetingCommit, ConversationOpening, commit_greeting, conversation_opening
 from .store import MemoryStore
+from .knowledge import KnowledgeStore
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
+knowledge_store = KnowledgeStore(DB_PATH)
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.7")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.8")
 
 
 @app.on_event("startup")
 def startup() -> None:
     store.initialize()
+    knowledge_store.initialize()
+
+
+@app.get("/v1/sync/health")
+def sync_health() -> dict:
+    return knowledge_store.sync_health()
 
 
 @app.get("/health")
