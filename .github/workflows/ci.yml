@@ -1,0 +1,30 @@
+name: Élise Memory CI
+
+on:
+  push:
+    branches:
+      - main
+      - "validate/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[test]"
+      - name: Compile package
+        run: python -m compileall -q elise_memory tests
+      - name: Run regression suite
+        run: python -m pytest -q
