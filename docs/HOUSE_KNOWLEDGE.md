@@ -65,3 +65,12 @@ L'orchestrateur lit d'abord l'ensemble des sources obligatoires et compile toute
 Une fois les cinq sources lues et compilées, le snapshot canonique **et** la vue des relations fonctionnelles sont publiés dans une seule transaction SQLite. Une erreur sur les relations annule donc aussi les modifications de connaissances. Le rapport de synchronisation expose le nombre de lignes source par classeur logique, le nombre de connaissances compilées, les changements, désactivations et relations.
 
 Le déclenchement nocturne n'est pas encore activé : l'heure et le mécanisme d'ordonnancement restent séparés de la logique de synchronisation afin de pouvoir tester celle-ci sans modifier Home Assistant.
+
+
+## Scheduler et santé
+
+Un scheduler local configurable est présent mais **désactivé par défaut**. Il sait calculer la prochaine exécution quotidienne dans un fuseau IANA et gère naturellement le changement de jour. L'heure `03:00` présente dans la valeur par défaut du composant est une valeur technique inactive, pas une décision de déploiement ; aucune planification n'est activée tant que la configuration finale n'est pas validée.
+
+L'API expose `GET /v1/sync/health`, qui ne contacte pas Google et retourne uniquement l'état local : dernière synchronisation enregistrée, nombre de connaissances canoniques courantes et nombre de relations courantes.
+
+Le scheduler n'est pas encore raccordé au démarrage de l'application ni au lecteur Google : cette activation reste une étape de déploiement séparée.
