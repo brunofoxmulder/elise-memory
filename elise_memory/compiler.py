@@ -134,3 +134,68 @@ def compile_relations(header, rows) -> list[dict]:
             "confidence": _norm(row.get("Confiance")) or None,
         })
     return out
+
+
+def _is_production_status(value: object) -> bool:
+    folded = _fold(value)
+    return ("production" in folded or "actif" in folded) and not any(
+        bad in folded for bad in ("test", "retire", "archive", "historique")
+    )
+
+
+def compile_automations(header, rows) -> list[CompiledKnowledge]:
+    required = {"Nom de l'automatisation", "Domaine", "Descriptif", "Production", "Statut test"}
+    out = []
+    for row in _rows(header, rows, required):
+        name = _norm(row["Nom de l'automatisation"])
+        production = _norm(row["Production"])
+        status = _norm(row["Statut test"])
+        if not name or not production:
+            continue
+        # Test/Production-1 are never compiled. Status is used only as a safety veto.
+        if any(bad in _fold(status) for bad in ("ko", "retire", "archive")):
+            continue
+        payload = {
+            "name": name,
+            "description": _norm(row["Descriptif"]) or None,
+            "technical_inventory": _norm(row.get("Inventaire technique")) or None,
+            "linked_automations": _norm(row.get("Automatisations liées")) or None,
+        }
+        item = KnowledgeCreate(
+            key=f"automation:{_fold(name).replace(' ', '-')}",
+            object_type="automation", domain=_norm(row["Domaine"]) or None,
+            value=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            origin="canonical", source_id=f"automations:production:{_fold(name)}",
+            source_locator=f"Automatisations / Automatisations / {name}",
+            evidence="Production présente; Test et Production -1 exclus",
+        )
+        out.append(CompiledKnowledge(item, stable_hash(payload)))
+    return out
+
+
+def compile_scripts(header, rows) -> list[CompiledKnowledge]:
+    required = {"ID", "Nom du fichier", "Service HA exposé", "Domaine", "Rôle", "Statut"}
+    out = []
+    for row in _rows(header, rows, required):
+        sid, name, status = map(_norm, (row["ID"], row["Nom du fichier"], row["Statut"]))
+        if not sid or not name or not _is_production_status(status):
+            continue
+        payload = {
+            "file": name,
+            "service": _norm(row["Service HA exposé"]) or None,
+            "role": _norm(row["Rôle"]) or None,
+            "entities": _norm(row.get("Entités HA utilisées")) or None,
+            "reads": _norm(row.get("Onglets lus")) or None,
+            "writes": _norm(row.get("Onglets écrits")) or None,
+            "version": _norm(row.get("Version actuelle")) or None,
+        }
+        item = KnowledgeCreate(
+            key=f"script:{sid}", object_type="pyscript",
+            domain=_norm(row["Domaine"]) or None,
+            value=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            origin="canonical", source_id=f"scripts:pyscript:{sid}",
+            source_locator=f"Scripts - Maison Cognitive / Scripts Pyscript / {sid}",
+            evidence=status,
+        )
+        out.append(CompiledKnowledge(item, stable_hash(payload)))
+    return out
