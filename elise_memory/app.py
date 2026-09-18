@@ -4,13 +4,14 @@ import os
 
 from fastapi import FastAPI, HTTPException
 
+from .context import ContextRequest, ContextResult, build_context
 from .models import MemoryCreate, MemoryKind, MemoryRecord
 from .store import MemoryStore
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.1")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.2")
 
 
 @app.on_event("startup")
@@ -29,8 +30,17 @@ def create_memory(item: MemoryCreate) -> MemoryRecord:
 
 
 @app.get("/v1/memories/{kind}/{key}", response_model=list[MemoryRecord])
-def get_memories(kind: MemoryKind, key: str) -> list[MemoryRecord]:
-    records = store.find(kind, key)
+def get_memories(
+    kind: MemoryKind,
+    key: str,
+    include_inactive: bool = False,
+) -> list[MemoryRecord]:
+    records = store.find(kind, key, include_inactive=include_inactive)
     if not records:
         raise HTTPException(status_code=404, detail="memory not found")
     return records
+
+
+@app.post("/v1/context", response_model=ContextResult)
+def context(request: ContextRequest) -> ContextResult:
+    return build_context(store, request)
