@@ -11,7 +11,7 @@ from .store import MemoryStore
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.2")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.3")
 
 
 @app.on_event("startup")
