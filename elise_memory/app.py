@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 
 from .context import ContextRequest, ContextResult, build_context
 from .models import MemoryCreate, MemoryKind, MemoryRecord
+from .opening_context import OpeningContext, OpeningContextRequest, build_opening_context
 from .ha_reader import HomeAssistantReader
 from .session import GreetingCommit, ConversationOpening, commit_greeting, conversation_opening
 from .store import MemoryStore
@@ -13,7 +14,7 @@ from .store import MemoryStore
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.6")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.7")
 
 
 @app.on_event("startup")
@@ -46,6 +47,12 @@ def get_memories(
 @app.post("/v1/context", response_model=ContextResult)
 def context(request: ContextRequest) -> ContextResult:
     return build_context(store, request)
+
+
+@app.post("/v1/conversation/open", response_model=OpeningContext)
+def open_conversation(request: OpeningContextRequest) -> OpeningContext:
+    """Return persistent memory and temporal opening state in one payload."""
+    return build_opening_context(store, HomeAssistantReader(), request)
 
 
 @app.get("/v1/session/open", response_model=ConversationOpening)
