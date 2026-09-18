@@ -91,3 +91,13 @@ def test_search_is_bounded_and_ignores_inactive(tmp_path):
     store.apply_canonical_snapshot(items)
     result = store.search("lampe", limit=100)
     assert len(result["knowledge"]) == 20
+
+
+def test_sync_health_exposes_last_successful_source_stats(tmp_path):
+    store = KnowledgeStore(tmp_path / "memory.db")
+    store.initialize()
+    item = KnowledgeCreate(key="k", object_type="fact", value="v", origin="canonical", source_id="s:k")
+    store.apply_canonical_snapshot([(item, "h")], source_stats={"metier": (42, 42)})
+    health = store.sync_health()
+    assert health["sources"]["metier"] == {"source_rows": 42, "compiled_count": 42}
+    assert health["last_sync"]["source_count"] == 1
