@@ -47,3 +47,27 @@ def test_rex_and_canonical_are_distinct_layers(tmp_path):
     store.replace_current(canonical, _hash(canonical.value))
     store.replace_current(rex, _hash(rex.value))
     assert {x["origin"] for x in store.active("thermal.salon")} == {"canonical", "rex"}
+
+
+def test_per_source_volume_drop_rejects_whole_snapshot(tmp_path):
+    store = KnowledgeStore(tmp_path / "memory.db")
+    store.initialize()
+    def item(key, source):
+        return KnowledgeCreate(key=key, object_type="fact", value=key,
+                               origin="canonical", source_id=source)
+    first = [(item(f"a{i}", f"a:{i}"), f"ha{i}") for i in range(10)]
+    first += [(item(f"b{i}", f"b:{i}"), f"hb{i}") for i in range(10)]
+    store.apply_canonical_snapshot(
+        first,
+        source_stats={"a": (10, 10), "b": (10, 10)},
+    )
+    before = store.sync_health()
+    second = [(item(f"a{i}", f"a:{i}"), f"ha{i}") for i in range(6)]
+    second += [(item(f"b{i}", f"b:{i}"), f"hb{i}") for i in range(10)]
+    with pytest.raises(ValueError, match="canonical_source_volume_drop:a"):
+        store.apply_canonical_snapshot(
+            second,
+            source_stats={"a": (6, 6), "b": (10, 10)},
+        )
+    after = store.sync_health()
+    assert after["canonical_records"] == before["canonical_records"] == 20
