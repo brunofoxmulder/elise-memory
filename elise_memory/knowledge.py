@@ -124,3 +124,88 @@ class KnowledgeStore:
                 (key,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+
+    def apply_canonical_snapshot(
+        self,
+        compiled: list[tuple[KnowledgeCreate, str]],
+        *,
+        expected_min_ratio: float = 0.70,
+    ) -> dict:
+        """Atomically publish a complete canonical snapshot.
+
+        Empty or abnormally small snapshots are rejected. Existing canonical
+        knowledge remains untouched on any validation or database error.
+        REX rows are never modified by this operation.
+        """
+        if not compiled:
+            raise ValueError("empty_canonical_snapshot")
+        identities = [(x.source_id, x.key) for x, _ in compiled]
+        if len(identities) != len(set(identities)):
+            raise ValueError("duplicate_canonical_identity")
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            current_count = conn.execute(
+                "SELECT COUNT(*) FROM knowledge WHERE origin='canonical' "
+                "AND status='current'"
+            ).fetchone()[0]
+            if current_count and len(compiled) < current_count * expected_min_ratio:
+                raise ValueError("canonical_snapshot_volume_drop")
+
+            run = conn.execute(
+                "INSERT INTO sync_runs(started_at,status,source_count,record_count) "
+                "VALUES (?, 'running', 0, ?)",
+                (now, len(compiled)),
+            ).lastrowid
+            seen = set()
+            changed = 0
+            for item, content_hash in compiled:
+                identity = (item.source_id, item.key)
+                seen.add(identity)
+                row = conn.execute(
+                    """SELECT id, content_hash FROM knowledge
+                       WHERE origin='canonical' AND source_id=? AND key=?
+                       AND status='current' ORDER BY id DESC LIMIT 1""",
+                    identity,
+                ).fetchone()
+                if row and row[1] == content_hash:
+                    continue
+                if row:
+                    conn.execute(
+                        "UPDATE knowledge SET status='superseded', superseded_at=? WHERE id=?",
+                        (now, row[0]),
+                    )
+                conn.execute(
+                    """INSERT INTO knowledge
+                    (key,object_type,domain,value,origin,source_id,source_locator,
+                     source_validated_at,evidence,confidence,status,content_hash,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?, 'current', ?,?)""",
+                    (
+                        item.key,item.object_type,item.domain,item.value,'canonical',
+                        item.source_id,item.source_locator,
+                        item.source_validated_at.isoformat() if item.source_validated_at else None,
+                        item.evidence,item.confidence,content_hash,now,
+                    ),
+                )
+                changed += 1
+
+            stale = conn.execute(
+                """SELECT id, source_id, key FROM knowledge
+                   WHERE origin='canonical' AND status='current'"""
+            ).fetchall()
+            deactivated = 0
+            for row in stale:
+                if (row[1], row[2]) not in seen:
+                    conn.execute(
+                        "UPDATE knowledge SET status='inactive', superseded_at=? WHERE id=?",
+                        (now, row[0]),
+                    )
+                    deactivated += 1
+            conn.execute(
+                """UPDATE sync_runs SET completed_at=?, status='success',
+                   source_count=?, record_count=? WHERE id=?""",
+                (datetime.now(timezone.utc).isoformat(),
+                 len({x.source_id.split(':',1)[0] for x,_ in compiled}),
+                 len(compiled), run),
+            )
+        return {"records": len(compiled), "changed": changed, "deactivated": deactivated}
