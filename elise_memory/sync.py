@@ -64,6 +64,10 @@ def synchronize_canonical(store: KnowledgeStore, reader: GoogleSheetsReader) -> 
     result = store.apply_canonical_snapshot(
         [(entry.item, entry.content_hash) for entry in compiled],
         relations=relations,
+        source_stats={
+            name: (counts[name], compiled_by_source[name])
+            for name in CANONICAL_RANGES
+        },
     )
     return SyncReport(
         source_rows=counts,
