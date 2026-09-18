@@ -49,3 +49,31 @@ def test_relations_only_keep_validated_active():
 def test_schema_drift_fails_closed():
     with pytest.raises(SourceSchemaError):
         compile_memory_ia(["wrong"], [["x"]])
+
+
+@pytest.mark.parametrize("status", [
+    "Validé",
+    "Validé / fonctionnel",
+    "Lecture seule validée",
+    "Production validée",
+    "Opérationnel",
+    "Obligatoire",
+    "Permanent",
+    "Installé / opérationnel",
+])
+def test_relation_status_accepts_current_canonical_vocabulary(status):
+    from elise_memory.compiler import is_active_relation
+    assert is_active_relation(status)
+
+
+@pytest.mark.parametrize("status", [
+    "Actif historique / action legacy obsolète",
+    "Production installée / automatique à observer",
+    "Prévision prudente",
+    "Actif pour le Bridge / relation interne à requalifier avant toute modification",
+    "Validé / observation formulation",
+    "",
+])
+def test_relation_status_rejects_historical_uncertain_vocabulary(status):
+    from elise_memory.compiler import is_active_relation
+    assert not is_active_relation(status)
