@@ -42,6 +42,14 @@ def sync_health() -> dict:
     return knowledge_store.sync_health()
 
 
+@app.get("/v1/knowledge/search")
+def search_knowledge(q: str, limit: int = 8) -> dict:
+    """Return compact local house knowledge and matching relations."""
+    if not q.strip():
+        raise HTTPException(status_code=422, detail="query must not be empty")
+    return knowledge_store.search(q, limit=limit)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "mode": "isolated"}
