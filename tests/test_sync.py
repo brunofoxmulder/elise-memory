@@ -62,3 +62,23 @@ def test_relation_failure_rolls_back_knowledge_snapshot(tmp_path):
         synchronize_canonical(store,FakeReader(bad))
     assert store.active("old")[0]["value"]=="safe"
     assert store.active("cover.volet_salon_2")==[]
+
+
+def test_sync_rejects_semantically_empty_required_source_before_publish(tmp_path):
+    from elise_memory.canonical_sources import CANONICAL_RANGES
+    from elise_memory.sync import synchronize_canonical
+
+    class EmptyRelationsReader(FakeReader):
+        def values(self, source):
+            values = super().values(source)
+            if source == CANONICAL_RANGES["relations"]:
+                return [values[0]]
+            return values
+
+    db = tmp_path / "memory.db"
+    store = KnowledgeStore(db)
+    store.initialize()
+    reader = EmptyRelationsReader()
+    with pytest.raises(ValueError, match="canonical_source_compiled_empty:relations"):
+        synchronize_canonical(store, reader)
+    assert store.sync_health()["canonical_records"] == 0
