@@ -209,3 +209,18 @@ class KnowledgeStore:
                  len(compiled), run),
             )
         return {"records": len(compiled), "changed": changed, "deactivated": deactivated}
+
+
+    def replace_canonical_relations(self, relations: list[dict]) -> None:
+        """Replace the derived canonical relation view in one transaction."""
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM knowledge_relations WHERE source_id LIKE 'index:relations:%'")
+            for relation in relations:
+                conn.execute(
+                    """INSERT INTO knowledge_relations
+                    (subject_key,relation,object_key,source_id,status,created_at)
+                    VALUES (?,?,?,?, 'current', ?)""",
+                    (relation["subject_key"], relation["relation"],
+                     relation["object_key"], relation["source_id"], now),
+                )
