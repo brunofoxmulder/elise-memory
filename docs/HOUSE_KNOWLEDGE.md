@@ -89,3 +89,10 @@ Sans activation explicite, aucun client Google n'est construit et aucun schedule
 ### Revue finale dev8
 
 La revue de cohérence a identifié puis corrigé un défaut d'observabilité : une synchronisation échouée avant la transaction protégeait bien la mémoire précédente, mais son échec n'apparaissait pas dans `/v1/sync/health`. Le runtime enregistre maintenant un run `failed` séparé avec une erreur bornée, sans modifier les connaissances canoniques. L'ancien writer de relations non transactionnel a été supprimé afin qu'il n'existe plus de chemin alternatif contournant la publication atomique.
+
+
+### Validation automatisée dev8
+
+Sur le commit `777cfda99e6861dd660e8bd7c5f6a6bc3d6c7949`, GitHub Actions a exécuté la suite sous Python 3.12.14 : installation des dépendances, `compileall` puis `pytest -q`. Résultat observé : **49 tests réussis en 0,60 s**. Deux workflows GitHub ont conclu `success`.
+
+Cette validation couvre la logique automatisée actuelle, mais ne vaut pas validation terrain : elle n'active pas Google, le scheduler ni un déploiement Home Assistant. Les avertissements Node affichés proviennent des versions d'actions GitHub utilisées et n'ont pas fait échouer la suite Python.
