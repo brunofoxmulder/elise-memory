@@ -131,6 +131,7 @@ class KnowledgeStore:
         compiled: list[tuple[KnowledgeCreate, str]],
         *,
         expected_min_ratio: float = 0.70,
+        relations: list[dict] | None = None,
     ) -> dict:
         """Atomically publish a complete canonical snapshot.
 
@@ -201,6 +202,22 @@ class KnowledgeStore:
                         (now, row[0]),
                     )
                     deactivated += 1
+            if relations is not None:
+                relation_ids = [r["source_id"] for r in relations]
+                if len(relation_ids) != len(set(relation_ids)):
+                    raise ValueError("duplicate_canonical_relation")
+                conn.execute(
+                    "DELETE FROM knowledge_relations WHERE source_id LIKE 'index:relations:%'"
+                )
+                for relation in relations:
+                    conn.execute(
+                        """INSERT INTO knowledge_relations
+                        (subject_key,relation,object_key,source_id,status,created_at)
+                        VALUES (?,?,?,?, 'current', ?)""",
+                        (relation["subject_key"], relation["relation"],
+                         relation["object_key"], relation["source_id"], now),
+                    )
+
             conn.execute(
                 """UPDATE sync_runs SET completed_at=?, status='success',
                    source_count=?, record_count=? WHERE id=?""",
