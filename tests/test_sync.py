@@ -48,3 +48,17 @@ def test_reader_failure_preserves_previous_snapshot(tmp_path):
     with pytest.raises(RuntimeError):
         synchronize_canonical(store,FakeReader(broken))
     assert store.active("old")[0]["value"]=="safe"
+
+
+def test_relation_failure_rolls_back_knowledge_snapshot(tmp_path):
+    store=KnowledgeStore(tmp_path/"m.sqlite3"); store.initialize()
+    old=KnowledgeCreate(key="old",object_type="fact",value="safe",origin="canonical",source_id="old:1")
+    store.apply_canonical_snapshot([(old,hashlib.sha256(b"safe").hexdigest())])
+    bad=sources()
+    bad["09_Relations fonctionnelles"].append(
+        ["R1","cover.other","piloté par","automation.other","Validé / actif"]
+    )
+    with pytest.raises(ValueError, match="duplicate_canonical_relation"):
+        synchronize_canonical(store,FakeReader(bad))
+    assert store.active("old")[0]["value"]=="safe"
+    assert store.active("cover.volet_salon_2")==[]
