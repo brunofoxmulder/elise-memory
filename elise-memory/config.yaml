@@ -1,0 +1,20 @@
+name: Élise Memory
+description: Mémoire locale déterministe de Maison Cognitive
+version: "0.1.0-dev.8"
+slug: elise_memory
+init: false
+arch:
+  - amd64
+startup: application
+boot: auto
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: API Élise Memory
+map:
+  - type: data
+    read_only: false
+options:
+  sync_enabled: false
+schema:
+  sync_enabled: bool
