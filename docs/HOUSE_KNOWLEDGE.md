@@ -62,6 +62,6 @@ Google recommande les identifiants éphémères lorsqu'ils sont disponibles et a
 
 L'orchestrateur lit d'abord l'ensemble des sources obligatoires et compile toutes les connaissances en mémoire. Aucune mutation SQLite n'est faite pendant cette phase. Une panne Google ou une dérive de schéma avant publication laisse donc la vue canonique précédente intacte.
 
-Une fois les cinq sources lues et compilées, le snapshot canonique est publié puis les relations fonctionnelles validées sont remplacées par leur vue dérivée courante. Le rapport de synchronisation expose le nombre de lignes source par classeur logique, le nombre de connaissances compilées, les changements, désactivations et relations.
+Une fois les cinq sources lues et compilées, le snapshot canonique **et** la vue des relations fonctionnelles sont publiés dans une seule transaction SQLite. Une erreur sur les relations annule donc aussi les modifications de connaissances. Le rapport de synchronisation expose le nombre de lignes source par classeur logique, le nombre de connaissances compilées, les changements, désactivations et relations.
 
 Le déclenchement nocturne n'est pas encore activé : l'heure et le mécanisme d'ordonnancement restent séparés de la logique de synchronisation afin de pouvoir tester celle-ci sans modifier Home Assistant.
