@@ -19,3 +19,6 @@ test = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[project.scripts]
+elise-memory = "elise_memory.__main__:main"
