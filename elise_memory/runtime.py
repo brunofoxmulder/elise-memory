@@ -29,4 +29,12 @@ def build_scheduler(store: KnowledgeStore) -> NightlyScheduler | None:
         timezone=os.getenv("ELISE_MEMORY_SYNC_TIMEZONE", "Europe/Paris"),
     )
     reader = GoogleSheetsReader(credentials)
-    return NightlyScheduler(config, lambda: synchronize_canonical(store, reader))
+
+    def job() -> None:
+        try:
+            synchronize_canonical(store, reader)
+        except Exception as exc:
+            store.record_sync_failure(f"{type(exc).__name__}: {exc}")
+            raise
+
+    return NightlyScheduler(config, job)
