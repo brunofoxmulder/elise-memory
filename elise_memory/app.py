@@ -11,18 +11,30 @@ from .ha_reader import HomeAssistantReader
 from .session import GreetingCommit, ConversationOpening, commit_greeting, conversation_opening
 from .store import MemoryStore
 from .knowledge import KnowledgeStore
+from .runtime import build_scheduler
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 knowledge_store = KnowledgeStore(DB_PATH)
+scheduler = None
 
 app = FastAPI(title="Élise Memory", version="0.1.0-dev.8")
 
 
 @app.on_event("startup")
 def startup() -> None:
+    global scheduler
     store.initialize()
     knowledge_store.initialize()
+    scheduler = build_scheduler(knowledge_store)
+    if scheduler:
+        scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    if scheduler:
+        scheduler.stop()
 
 
 @app.get("/v1/sync/health")
