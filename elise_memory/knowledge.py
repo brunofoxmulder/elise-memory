@@ -134,6 +134,48 @@ class KnowledgeStore:
         return [dict(row) for row in rows]
 
 
+    def search(self, query: str, *, limit: int = 8) -> dict:
+        """Search active house knowledge and its functional relations locally."""
+        terms = [t for t in query.strip().lower().split() if len(t) >= 2]
+        if not terms:
+            return {"query": query, "knowledge": [], "relations": []}
+        limit = max(1, min(limit, 20))
+        patterns = [f"%{term}%" for term in terms]
+        clause = " OR ".join(
+            ["lower(key) LIKE ? OR lower(coalesce(domain,'')) LIKE ? OR "
+             "lower(value) LIKE ? OR lower(source_id) LIKE ?" for _ in patterns]
+        )
+        params = [p for pattern in patterns for p in (pattern,) * 4]
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""SELECT * FROM knowledge
+                    WHERE status IN ('current','validated','candidate')
+                    AND ({clause})
+                    ORDER BY CASE origin WHEN 'canonical' THEN 0 ELSE 1 END,
+                             CASE WHEN lower(key)=? THEN 0 ELSE 1 END,
+                             id DESC LIMIT ?""",
+                (*params, query.strip().lower(), limit),
+            ).fetchall()
+            relation_clause = " OR ".join(
+                ["lower(subject_key) LIKE ? OR lower(relation) LIKE ? OR "
+                 "lower(object_key) LIKE ?" for _ in patterns]
+            )
+            relation_params = [p for pattern in patterns for p in (pattern,) * 3]
+            relations = conn.execute(
+                f"""SELECT subject_key,relation,object_key,source_id,status
+                    FROM knowledge_relations
+                    WHERE status='current' AND ({relation_clause})
+                    ORDER BY id DESC LIMIT ?""",
+                (*relation_params, limit),
+            ).fetchall()
+        return {
+            "query": query,
+            "knowledge": [dict(row) for row in rows],
+            "relations": [dict(row) for row in relations],
+        }
+
+
     def apply_canonical_snapshot(
         self,
         compiled: list[tuple[KnowledgeCreate, str]],
