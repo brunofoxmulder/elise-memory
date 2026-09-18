@@ -228,19 +228,17 @@ class KnowledgeStore:
         return {"records": len(compiled), "changed": changed, "deactivated": deactivated}
 
 
-    def replace_canonical_relations(self, relations: list[dict]) -> None:
-        """Replace the derived canonical relation view in one transaction."""
+    def record_sync_failure(self, error: str) -> None:
+        """Record a failed external sync without changing canonical knowledge."""
         now = datetime.now(timezone.utc).isoformat()
+        safe_error = (error or "unknown_sync_error")[:1000]
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM knowledge_relations WHERE source_id LIKE 'index:relations:%'")
-            for relation in relations:
-                conn.execute(
-                    """INSERT INTO knowledge_relations
-                    (subject_key,relation,object_key,source_id,status,created_at)
-                    VALUES (?,?,?,?, 'current', ?)""",
-                    (relation["subject_key"], relation["relation"],
-                     relation["object_key"], relation["source_id"], now),
-                )
+            conn.execute(
+                """INSERT INTO sync_runs
+                (started_at,completed_at,status,source_count,record_count,error)
+                VALUES (?,?, 'failed',0,0,?)""",
+                (now, now, safe_error),
+            )
 
 
     def sync_health(self) -> dict:
