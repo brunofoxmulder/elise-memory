@@ -71,9 +71,9 @@ Le déclenchement nocturne n'est pas encore activé : l'heure et le mécanisme d
 
 Un scheduler local configurable est présent mais **désactivé par défaut**. Il sait calculer la prochaine exécution quotidienne dans un fuseau IANA et gère naturellement le changement de jour. L'heure `03:00` présente dans la valeur par défaut du composant est une valeur technique inactive, pas une décision de déploiement ; aucune planification n'est activée tant que la configuration finale n'est pas validée.
 
-L'API expose `GET /v1/sync/health`, qui ne contacte pas Google et retourne uniquement l'état local : dernière synchronisation enregistrée, nombre de connaissances canoniques courantes et nombre de relations courantes.
+L'API expose `GET /v1/sync/health`, qui ne contacte pas Google et retourne uniquement l'état local : dernière synchronisation enregistrée, nombre de connaissances canoniques courantes, nombre de relations courantes et statistiques de la dernière synchronisation réussie par source.
 
-Le scheduler n'est pas encore raccordé au démarrage de l'application ni au lecteur Google : cette activation reste une étape de déploiement séparée.
+Le scheduler est raccordé au cycle de vie de l'application et au lecteur Google, mais reste désactivé par défaut. Son activation effective et les identifiants Google restent une étape de déploiement séparée.
 
 
 ## Activation de déploiement
@@ -93,6 +93,8 @@ La revue de cohérence a identifié puis corrigé un défaut d'observabilité : 
 
 ### Validation automatisée dev8
 
-Sur le commit `777cfda99e6861dd660e8bd7c5f6a6bc3d6c7949`, GitHub Actions a exécuté la suite sous Python 3.12.14 : installation des dépendances, `compileall` puis `pytest -q`. Résultat observé : **49 tests réussis en 0,60 s**. Deux workflows GitHub ont conclu `success`.
+La branche `dev8-house-knowledge-schema` est validée par les deux workflows GitHub. La dernière validation observée après ajout de la recherche locale House Memory et du bilan par source conclut `success` sur les deux workflows.
 
-Cette validation couvre la logique automatisée actuelle, mais ne vaut pas validation terrain : elle n'active pas Google, le scheduler ni un déploiement Home Assistant. Les avertissements Node affichés proviennent des versions d'actions GitHub utilisées et n'ont pas fait échouer la suite Python.
+La recherche conversationnelle reste entièrement locale : `GET /v1/knowledge/search` interroge SQLite et retourne des connaissances actives ainsi que les relations fonctionnelles correspondantes, sans contacter Google Drive ni Home Assistant. Les réponses sont bornées afin de préserver un contexte compact.
+
+Cette validation automatisée ne vaut pas déploiement terrain : Google, le scheduler et Home Assistant restent non activés tant que le déploiement n'a pas été explicitement validé.
