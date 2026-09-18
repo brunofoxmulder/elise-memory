@@ -84,3 +84,8 @@ Le raccordement au cycle de vie de l'application est maintenant présent, mais r
 - `ELISE_MEMORY_SYNC_HOUR`, `ELISE_MEMORY_SYNC_MINUTE`, `ELISE_MEMORY_SYNC_TIMEZONE` : horaire configurable.
 
 Sans activation explicite, aucun client Google n'est construit et aucun scheduler n'est lancé. Si l'activation est demandée sans identifiants, le démarrage échoue explicitement plutôt que de fonctionner dans un état ambigu. Aucun secret n'est inclus dans le dépôt.
+
+
+### Revue finale dev8
+
+La revue de cohérence a identifié puis corrigé un défaut d'observabilité : une synchronisation échouée avant la transaction protégeait bien la mémoire précédente, mais son échec n'apparaissait pas dans `/v1/sync/health`. Le runtime enregistre maintenant un run `failed` séparé avec une erreur bornée, sans modifier les connaissances canoniques. L'ancien writer de relations non transactionnel a été supprimé afin qu'il n'existe plus de chemin alternatif contournant la publication atomique.
