@@ -38,8 +38,27 @@ def is_validated(value: object) -> bool:
 
 
 def is_active_relation(value: object) -> bool:
+    """Accept current/usable relations and reject explicit historical/uncertain ones.
+
+    The canonical sheet uses several legitimate status labels, not a single enum.
+    We therefore fail closed on explicit negative/uncertain semantics, then accept
+    statuses that positively express validation, production, operation or permanence.
+    """
     folded = _fold(value)
-    return "valide" in folded and "actif" in folded
+    if not folded:
+        return False
+    veto = (
+        "historique", "obsolet", "legacy", "remplace", "retire", "archive",
+        "a observer", "observation", "prevision", "prudente", "hypothese",
+        "requalifier", "ko",
+    )
+    if any(word in folded for word in veto):
+        return False
+    positive = (
+        "valide", "production", "operationnel", "actif", "permanent",
+        "obligatoire", "fonctionnel", "installe",
+    )
+    return any(word in folded for word in positive)
 
 
 def stable_hash(payload: dict) -> str:
