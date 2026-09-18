@@ -72,3 +72,22 @@ def test_per_source_volume_drop_rejects_whole_snapshot(tmp_path):
         )
     after = store.sync_health()
     assert after["canonical_records"] == before["canonical_records"] == 20
+
+
+def test_search_returns_knowledge_and_relations(tmp_path):
+    store = KnowledgeStore(tmp_path / "memory.db")
+    store.initialize()
+    item = KnowledgeCreate(key="switch.reveil", object_type="entity", domain="Occupation", value="ON = éveillé ; OFF = dort", origin="canonical", source_id="metier:reveil")
+    store.apply_canonical_snapshot([(item, "h1")], relations=[{"subject_key": "switch.reveil", "relation": "déclenche", "object_key": "automation.bonne_nuit", "source_id": "index:relations:r1"}])
+    result = store.search("reveil")
+    assert result["knowledge"][0]["key"] == "switch.reveil"
+    assert result["relations"][0]["subject_key"] == "switch.reveil"
+
+
+def test_search_is_bounded_and_ignores_inactive(tmp_path):
+    store = KnowledgeStore(tmp_path / "memory.db")
+    store.initialize()
+    items = [(KnowledgeCreate(key=f"lamp.{i}", object_type="entity", value="lampe salon", origin="canonical", source_id=f"s:{i}"), f"h{i}") for i in range(25)]
+    store.apply_canonical_snapshot(items)
+    result = store.search("lampe", limit=100)
+    assert len(result["knowledge"]) == 20
