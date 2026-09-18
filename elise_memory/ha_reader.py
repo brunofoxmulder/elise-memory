@@ -18,7 +18,12 @@ class HAHistoryState:
     last_changed: datetime
 
 class HomeAssistantReader:
-    def __init__(self, base_url, token, timeout=5.0):
+    def __init__(self, base_url="http://supervisor/core", token=None, timeout=5.0):
+        if token is None:
+            import os
+            token = os.environ.get("SUPERVISOR_TOKEN")
+        if not token:
+            raise RuntimeError("SUPERVISOR_TOKEN is required")
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
