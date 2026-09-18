@@ -74,3 +74,13 @@ Un scheduler local configurable est présent mais **désactivé par défaut**. I
 L'API expose `GET /v1/sync/health`, qui ne contacte pas Google et retourne uniquement l'état local : dernière synchronisation enregistrée, nombre de connaissances canoniques courantes et nombre de relations courantes.
 
 Le scheduler n'est pas encore raccordé au démarrage de l'application ni au lecteur Google : cette activation reste une étape de déploiement séparée.
+
+
+## Activation de déploiement
+
+Le raccordement au cycle de vie de l'application est maintenant présent, mais reste fail-safe et inactif par défaut. Variables prévues :
+- `ELISE_MEMORY_SYNC_ENABLED=true` : activation explicite ;
+- `ELISE_MEMORY_GOOGLE_CREDENTIALS` : chemin local du secret de compte de service, obligatoire si activé ;
+- `ELISE_MEMORY_SYNC_HOUR`, `ELISE_MEMORY_SYNC_MINUTE`, `ELISE_MEMORY_SYNC_TIMEZONE` : horaire configurable.
+
+Sans activation explicite, aucun client Google n'est construit et aucun scheduler n'est lancé. Si l'activation est demandée sans identifiants, le démarrage échoue explicitement plutôt que de fonctionner dans un état ambigu. Aucun secret n'est inclus dans le dépôt.
