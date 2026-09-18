@@ -8,7 +8,10 @@ Ce registre fixe le périmètre minimal de la première compilation `house`. Une
 | 00_Index / 09_Relations fonctionnelles | source, relation, cible, rôle, confiance | statut validé **et actif** | relations remplacées/inactives |
 | Home Assistant / Mémoire IA | connaissance, domaine, preuves, confiance | statut commençant par Validé/Validée | hypothèses et connaissances à vérifier |
 
-Les automatisations, le Référentiel HA exhaustif et les scripts seront ajoutés ensuite comme enrichissements, avec tests de filtrage propres à leur taxonomie. Ils ne sont pas aspirés en bloc.
+4. **Automatisations / Automatisations** : uniquement les lignes ayant une Production présente et sans veto KO/retiré/archive. Le compilateur conserve nom, domaine, descriptif et dépendances utiles. Le YAML Production, Test et Production -1 n'entre jamais dans la valeur Memory.
+5. **Scripts - Maison Cognitive / Scripts Pyscript** : uniquement les statuts production/actifs, hors test, retiré, archive et historique. Sont conservés rôle, service, version et principales entrées/sorties.
+
+Le Référentiel HA exhaustif reste différé : il ne sera utilisé que comme enrichissement ciblé des entités déjà référencées, jamais comme aspiration globale.
 
 ## Règles fail-closed
 
