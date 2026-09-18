@@ -33,3 +33,17 @@ def test_reader_uses_get_only(monkeypatch):
     assert captured["method"] == "GET"
     assert captured["url"].endswith("/api/states/sensor.test_wake")
     assert state.entity_id == "sensor.test_wake"
+
+
+def test_default_reader_uses_supervisor_token(monkeypatch):
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "secret")
+    reader = HomeAssistantReader()
+    assert reader.base_url == "http://supervisor/core"
+    assert reader.token == "secret"
+
+
+def test_default_reader_requires_supervisor_token(monkeypatch):
+    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
+    import pytest
+    with pytest.raises(RuntimeError, match="SUPERVISOR_TOKEN"):
+        HomeAssistantReader()
