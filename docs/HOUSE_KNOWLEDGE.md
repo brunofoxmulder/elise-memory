@@ -47,3 +47,12 @@ Une compilation canonique complète est publiée en une transaction SQLite. Avan
 - une erreur laisse intégralement en place la dernière vue valide.
 
 Lors d'une publication valide, les contenus inchangés ne sont pas dupliqués, les contenus modifiés supersèdent leur version précédente et les connaissances disparues de la source deviennent inactives sans effacement historique. La couche REX n'est jamais modifiée par une synchronisation canonique.
+
+
+## Accès Google Sheets
+
+Le lecteur nocturne utilise l'API Google Sheets v4 avec le scope strict `spreadsheets.readonly`. Il n'expose aucune méthode d'écriture et n'effectue aucune découverte générale de Google Drive : les identifiants de classeurs, noms d'onglets et plages autorisées sont explicitement enregistrés dans le code.
+
+Pour une exécution autonome sur HAOS, l'option préparée est un compte de service dédié dont le fichier d'identifiants est fourni au conteneur de manière sécurisée. Les seuls classeurs nécessaires devront être partagés avec ce compte. La clé privée ne doit jamais être placée dans GitHub, dans SQLite, dans les logs ou dans le jumeau numérique.
+
+Google recommande les identifiants éphémères lorsqu'ils sont disponibles et avertit du risque des clés de compte de service. HAOS n'étant pas une ressource Google Cloud à laquelle on peut simplement attacher un compte de service, le choix opérationnel final des identifiants reste à valider avant déploiement. Le code actuel prépare le lecteur mais ne configure ni ne déploie aucun secret.
