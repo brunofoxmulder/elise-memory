@@ -43,10 +43,21 @@ L'URL annoncée est construite à partir du nom interne réel du conteneur :
 sans port LAN, adresse IP fixe ni intégration personnalisée. L'utilisateur doit
 toujours confirmer l'ajout dans Home Assistant ; l'annonce seule ne l'active pas.
 
-La sécurité du candidat repose sur trois frontières cumulatives : port hôte désactivé,
-réseau interne Supervisor et unique outil MCP en lecture seule. OAuth n'est pas ajouté
-à ce stade, car l'intégration MCP officielle accepte un serveur local sans
-authentification et la voie d'écriture n'est pas publiée comme outil MCP.
+La consultation MCP reste sans authentification : elle suppose un réseau interne
+de confiance. Un port hôte désactivé n'isole pas l'app des autres conteneurs.
+La protection DNS rebinding accepte uniquement loopback et le nom réel du conteneur,
+sans autoriser d'origine navigateur. L'intégration réelle reste à tester sur HAOS.
+
+Les quatre routes HTTP mutantes (sync, création mémoire, capture conversationnelle,
+confirmation de salutation) sont désormais désactivées par défaut (HTTP 503).
+Un appel administratif exige `ELISE_MEMORY_ADMIN_TOKEN` d'au moins 32 caractères
+et le même secret dans `Authorization: Bearer …` (sinon HTTP 401).
+Ne jamais réutiliser le jeton Supervisor. Aucun secret n'est fourni aux outils MCP.
+Le provisionnement de ce secret dans HAOS n'est pas inclus dans ce correctif.
+
+Le champ `user_confirmed` est une déclaration du client authentifié, pas une preuve
+technique du consentement de Bruno. Le filtrage des secrets, l'isolation des souvenirs
+par utilisateur et la recette fonctionnelle du corpus restent à valider avant déploiement.
 
 Réponse garantie :
 

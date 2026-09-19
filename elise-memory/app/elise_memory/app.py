@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from mcp.server.fastmcp import FastMCP
 
 from .context import ContextRequest, ContextResult, build_context
@@ -17,6 +17,7 @@ from .sync import synchronize_canonical
 from .runtime import build_reader_from_env, build_scheduler, sync_runtime_status
 from .resolver import ResolutionResult, resolve_current_entity
 from .agent import AgentAnswer, AgentQuery, query_agent_memory
+from .security import require_admin, transport_security
 from .conversation_memory import (
     ConversationMemoryCapture,
     capture_conversation_memory,
@@ -38,6 +39,7 @@ memory_mcp = FastMCP(
     stateless_http=True,
     json_response=True,
     streamable_http_path="/",
+    transport_security=transport_security(),
 )
 
 
@@ -80,7 +82,7 @@ app = FastAPI(
 )
 
 
-@app.post("/v1/sync/run")
+@app.post("/v1/sync/run", dependencies=[Depends(require_admin)])
 def run_sync() -> dict:
     """Run one guarded canonical sync on explicit request."""
     try:
@@ -131,7 +133,8 @@ def health() -> dict:
     }
 
 
-@app.post("/v1/memories", response_model=MemoryRecord, status_code=201)
+@app.post("/v1/memories", response_model=MemoryRecord, status_code=201,
+          dependencies=[Depends(require_admin)])
 def create_memory(item: MemoryCreate) -> MemoryRecord:
     if item.kind == "conversation":
         raise HTTPException(
@@ -143,6 +146,7 @@ def create_memory(item: MemoryCreate) -> MemoryRecord:
 
 @app.post(
     "/v1/conversation/memories",
+    dependencies=[Depends(require_admin)],
     response_model=MemoryRecord,
     status_code=201,
 )
@@ -180,7 +184,8 @@ def open_session() -> ConversationOpening:
     return conversation_opening(store, HomeAssistantReader())
 
 
-@app.post("/v1/session/greeting/commit", status_code=204)
+@app.post("/v1/session/greeting/commit", status_code=204,
+          dependencies=[Depends(require_admin)])
 def confirm_greeting(item: GreetingCommit) -> None:
     """Record a greeting only after the caller confirms it was emitted."""
     try:
