@@ -1,3 +1,3 @@
 """Élise Memory package."""
 
-__version__ = "0.1.0-dev.13"
+__version__ = "0.1.0-dev.17"
