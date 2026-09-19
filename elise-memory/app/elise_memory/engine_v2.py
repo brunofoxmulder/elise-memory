@@ -22,6 +22,10 @@ _OPAQUE_ENTITY_REF_RE = re.compile(r"^[0-9a-f]{32}$")
 _TEMPLATE_ENTITY_RE = re.compile(
     r"(?:states|state_attr|is_state)\(\s*['\"]([^'\"]+)['\"]"
 )
+_TEMPLATE_DOTTED_ENTITY_RE = re.compile(
+    r"\bstates\.([a-z_][a-z0-9_]*)\.([a-z0-9_]+)\b",
+    re.I,
+)
 
 _STOPWORDS = {
     "a", "au", "aux", "avec", "ce", "ces", "cette", "dans", "de", "des",
@@ -732,7 +736,64 @@ def _detail(**values: Any) -> str:
 def _template_refs(value: Any) -> set[str]:
     if not isinstance(value, str):
         return set()
-    return set(_TEMPLATE_ENTITY_RE.findall(value))
+    refs = set(_TEMPLATE_ENTITY_RE.findall(value))
+    refs.update(
+        f"{domain}.{object_id}"
+        for domain, object_id in _TEMPLATE_DOTTED_ENTITY_RE.findall(value)
+    )
+    return refs
+
+
+def _template_excerpt(value: Any, limit: int = 600) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.strip().split())
+    if not text:
+        return None
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _emit_template_guard(
+    value: Any,
+    automation_id: str,
+    edges: list[GraphEdge],
+    *,
+    predicate: str,
+    branch_path: str,
+    expected: bool | None,
+) -> None:
+    excerpt = _template_excerpt(value)
+    if excerpt is None:
+        return
+    edges.append(
+        GraphEdge(
+            "template_condition",
+            predicate,
+            automation_id,
+            SourceKind.AUTOMATION_PRODUCTION,
+            _detail(
+                condition="template",
+                expression=excerpt,
+                branch_path=branch_path,
+                expected=expected,
+            ),
+        )
+    )
+    for ref in _template_refs(value):
+        edges.append(
+            GraphEdge(
+                ref,
+                predicate,
+                automation_id,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(
+                    via="template",
+                    expression=excerpt,
+                    branch_path=branch_path,
+                    expected=expected,
+                ),
+            )
+        )
 
 
 def _effect_for_service(service: str, data: Any = None) -> str | None:
@@ -910,6 +971,12 @@ def _walk_condition(
                 branch_path=branch_path, expected=expected,
             )
         return
+    if isinstance(node, str):
+        _emit_template_guard(
+            node, automation_id, edges, predicate=predicate,
+            branch_path=branch_path, expected=expected,
+        )
+        return
     if not isinstance(node, dict):
         return
     if node.get("enabled") is False:
@@ -987,17 +1054,27 @@ def _walk_condition(
                 )
             )
 
-    for value in node.values():
-        for ref in _template_refs(value):
-            edges.append(
-                GraphEdge(
-                    ref, predicate, automation_id,
-                    SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(
-                        via="template", branch_path=branch_path, expected=expected,
-                    ),
+    if condition == "template":
+        _emit_template_guard(
+            node.get("value_template"),
+            automation_id,
+            edges,
+            predicate=predicate,
+            branch_path=branch_path,
+            expected=expected,
+        )
+    else:
+        for value in node.values():
+            for ref in _template_refs(value):
+                edges.append(
+                    GraphEdge(
+                        ref, predicate, automation_id,
+                        SourceKind.AUTOMATION_PRODUCTION,
+                        _detail(
+                            via="template", branch_path=branch_path, expected=expected,
+                        ),
+                    )
                 )
-            )
 
     for key in ("conditions", "and", "or", "not"):
         if key in node:
