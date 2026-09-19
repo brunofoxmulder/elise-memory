@@ -12,14 +12,14 @@ from .session import GreetingCommit, ConversationOpening, commit_greeting, conve
 from .store import MemoryStore
 from .knowledge import KnowledgeStore
 from .sync import synchronize_canonical
-from .runtime import build_reader_from_env, build_scheduler
+from .runtime import build_reader_from_env, build_scheduler, sync_runtime_status
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 knowledge_store = KnowledgeStore(DB_PATH)
 scheduler = None
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.11")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.12")
 
 
 @app.on_event("startup")
@@ -58,7 +58,9 @@ def run_sync() -> dict:
 
 @app.get("/v1/sync/health")
 def sync_health() -> dict:
-    return knowledge_store.sync_health()
+    health = knowledge_store.sync_health()
+    health["runtime"] = sync_runtime_status()
+    return health
 
 
 @app.get("/v1/knowledge/search")
@@ -70,8 +72,10 @@ def search_knowledge(q: str, limit: int = 8) -> dict:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "isolated"}
+def health() -> dict:
+    runtime = sync_runtime_status()
+    sync_state = "ready" if runtime["ready"] else ("not_ready" if runtime["enabled"] else "disabled")
+    return {"status": "ok", "mode": "isolated", "sync": sync_state}
 
 
 @app.post("/v1/memories", response_model=MemoryRecord, status_code=201)
