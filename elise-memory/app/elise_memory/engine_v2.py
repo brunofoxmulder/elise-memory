@@ -72,6 +72,7 @@ class SourceKind(StrEnum):
     MEMORY_IA = "memory_ia"
     HISTORY = "history"
     REX = "rex"
+    REX_VALIDATED = "rex_validated"
 
 
 class FactType(StrEnum):
@@ -92,7 +93,8 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.METIER: 30,
         SourceKind.MEMORY_IA: 20,
         SourceKind.HISTORY: 10,
-        SourceKind.REX: 25
+        SourceKind.REX: 25,
+        SourceKind.REX_VALIDATED: 26
     },
     FactType.CURRENT_STATE: {
         SourceKind.HA_CURRENT: 100,
@@ -102,7 +104,8 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.METIER: 10,
         SourceKind.MEMORY_IA: 10,
         SourceKind.HISTORY: 5,
-        SourceKind.REX: 25
+        SourceKind.REX: 25,
+        SourceKind.REX_VALIDATED: 26
     },
     FactType.BEHAVIOR: {
         SourceKind.AUTOMATION_PRODUCTION: 100,
@@ -112,7 +115,8 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.MEMORY_IA: 45,
         SourceKind.HA_CURRENT: 30,
         SourceKind.HISTORY: 15,
-        SourceKind.REX: 25
+        SourceKind.REX: 25,
+        SourceKind.REX_VALIDATED: 26
     },
     FactType.RELATION: {
         SourceKind.AUTOMATION_PRODUCTION: 100,
@@ -122,7 +126,8 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.MEMORY_IA: 40,
         SourceKind.HA_CURRENT: 30,
         SourceKind.HISTORY: 15,
-        SourceKind.REX: 25
+        SourceKind.REX: 25,
+        SourceKind.REX_VALIDATED: 26
     },
     FactType.MEANING: {
         SourceKind.METIER: 100,
@@ -132,7 +137,10 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.OBJECTS_HA: 40,
         SourceKind.HA_CURRENT: 30,
         SourceKind.HISTORY: 20,
-        SourceKind.REX: 25
+        SourceKind.REX: 25,
+        # A validated REX correction may refine documentary meaning, but it
+        # remains unable to outrank operational state, behavior or identity.
+        SourceKind.REX_VALIDATED: 95
     },
     FactType.HISTORY: {
         SourceKind.HISTORY: 100,
@@ -142,7 +150,8 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.AUTOMATION_PRODUCTION: 20,
         SourceKind.OBJECTS_HA: 10,
         SourceKind.HA_CURRENT: 10,
-        SourceKind.REX: 25
+        SourceKind.REX: 25,
+        SourceKind.REX_VALIDATED: 26
     },
 }
 
