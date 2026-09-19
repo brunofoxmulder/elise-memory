@@ -1,6 +1,6 @@
 name: Élise Memory
-description: Mémoire locale déterministe de Maison Cognitive
-version: "0.1.0-dev.11"
+description: Mémoire locale déterministe pour Home Assistant
+version: "0.1.0-dev.12"
 slug: elise_memory
 init: false
 hassio_api: true
@@ -18,6 +18,7 @@ map:
     read_only: false
   - type: addon_config
     read_only: true
+    path: /config
 options:
   sync_enabled: false
   sheet_home_assistant_id: ""
