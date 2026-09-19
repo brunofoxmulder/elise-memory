@@ -2232,9 +2232,24 @@ def retrieve_automation_chains(
             if edge.predicate != "ACTS_ON" or edge.object != target.entity_id:
                 continue
             automation = active.get(edge.subject)
+            parent_call = None
+            if not automation and edge.subject.startswith("operational_script:"):
+                parent_calls = [
+                    item for item in edge_list
+                    if item.predicate == "CALLS_PROVED_SCRIPT" and item.object == edge.subject
+                ]
+                if len(parent_calls) == 1:
+                    parent_call = parent_calls[0]
+                    automation = active.get(parent_call.subject)
             if not automation:
                 continue
             detail = json.loads(edge.detail) if edge.detail else {}
+            if parent_call is not None:
+                detail = {
+                    **detail,
+                    "via_operational_script": edge.subject.removeprefix("operational_script:"),
+                    "script_call_proof": _edge_detail(parent_call),
+                }
             effect = detail.get("effect")
             if intent and effect and effect != intent:
                 # An explicit action verb is a semantic filter, not merely a
