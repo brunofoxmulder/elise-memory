@@ -652,13 +652,17 @@ def build_operational_graph(
 
 def _intent(query: str) -> str | None:
     text = normalize_text(query)
-    if re.search(r"\b(allum\w*|activ\w*|demarr\w*)\b", text):
+    if re.search(r"\b(allum\w*|activ\w*|demarr\w*)\b", text) or re.search(
+        r"\bturn(?:s|ed|ing)?\s+on\b", text
+    ):
         return "turn_on"
-    if re.search(r"\b(etein\w*|coup\w*|arret\w*|desactiv\w*)\b", text):
+    if re.search(r"\b(etein\w*|coup\w*|arret\w*|desactiv\w*)\b", text) or re.search(
+        r"\bturn(?:s|ed|ing)?\s+off\b", text
+    ):
         return "turn_off"
-    if re.search(r"\b(ouvr\w*|ouverture)\b", text):
+    if re.search(r"\b(ouvr\w*|ouverture|open\w*)\b", text):
         return "open"
-    if re.search(r"\b(ferm\w*|fermeture)\b", text):
+    if re.search(r"\b(ferm\w*|fermeture|clos\w*)\b", text):
         return "close"
     return None
 
@@ -731,6 +735,14 @@ def retrieve_automation_chains(
     candidates = resolve_entities(query, entity_list, limit=5)
     if not candidates:
         return []
+    # Object resolution is a separate stage. Only equally-best identity
+    # candidates may enter operational retrieval; lower-scored lexical matches
+    # (for example another lamp elsewhere in the house) must not compete.
+    best_object_score = candidates[0][1]
+    candidates = [
+        candidate for candidate in candidates
+        if candidate[1] == best_object_score
+    ]
 
     active = {
         item.entity_id: item
