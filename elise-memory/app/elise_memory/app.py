@@ -14,6 +14,7 @@ from .knowledge import KnowledgeStore
 from .sync import synchronize_canonical
 from .runtime import build_reader_from_env, build_scheduler, sync_runtime_status
 from .resolver import ResolutionResult, resolve_current_entity
+from .agent import AgentAnswer, AgentQuery, query_agent_memory
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
@@ -70,6 +71,12 @@ def search_knowledge(q: str, limit: int = 8) -> dict:
     if not q.strip():
         raise HTTPException(status_code=422, detail="query must not be empty")
     return knowledge_store.search(q, limit=limit)
+
+
+@app.post("/v1/agent/query", response_model=AgentAnswer)
+def agent_query(request: AgentQuery) -> AgentAnswer:
+    """Give the agent bounded context or explicitly route causality elsewhere."""
+    return query_agent_memory(store, knowledge_store, request)
 
 
 @app.get("/health")
