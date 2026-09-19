@@ -19,7 +19,7 @@ store = MemoryStore(DB_PATH)
 knowledge_store = KnowledgeStore(DB_PATH)
 scheduler = None
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.8")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.11")
 
 
 @app.on_event("startup")
