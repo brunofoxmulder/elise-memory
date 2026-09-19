@@ -882,6 +882,9 @@ actions:
 
 
 def test_french_unlock_verb_is_removed_from_object_identity_and_hints_lock():
-    entities, _, _ = _engine()
+    entities = [
+        EntityRecord("lock.porte_dentree", "lock", "Porte d'entrée", "locked"),
+        EntityRecord("binary_sensor.porte_dentree", "binary_sensor", "Porte d'entrée", "off"),
+    ]
     result = resolve_entities("quand je deverrouille la porte", entities)
-    assert result[0][0].entity_id == "lock.front_door"
+    assert result[0][0].entity_id == "lock.porte_dentree"
