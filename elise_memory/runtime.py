@@ -38,3 +38,11 @@ def build_scheduler(store: KnowledgeStore) -> NightlyScheduler | None:
             raise
 
     return NightlyScheduler(config, job)
+
+
+def build_reader_from_env() -> GoogleSheetsReader:
+    """Build the read-only canonical source reader for an explicit sync request."""
+    credentials = os.getenv("ELISE_MEMORY_GOOGLE_CREDENTIALS", "").strip()
+    if not credentials:
+        raise RuntimeError("google_credentials_required")
+    return GoogleSheetsReader(credentials)
