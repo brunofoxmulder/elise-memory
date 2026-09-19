@@ -1570,6 +1570,163 @@ def resolve_entities(
     return scored[: max(1, limit)]
 
 
+
+def resolve_automations(
+    query: str,
+    reconciliation: ReconciliationResult,
+    *,
+    limit: int = 5,
+) -> list[tuple[ReconciledAutomation, int]]:
+    """Resolve a natural automation name against reconciled current automations."""
+    qnorm = normalize_text(query)
+    qtokens = _object_tokens(query)
+    if not qtokens:
+        qtokens = {token for token in _tokens(query) if token not in _STOPWORDS}
+
+    scored: list[tuple[ReconciledAutomation, int]] = []
+    for automation in reconciliation.matched:
+        if automation.state != "on":
+            continue
+        name_norm = normalize_text(automation.name)
+        name_tokens = set(_tokens(automation.name))
+        score = 0
+        if qnorm == name_norm or qnorm == normalize_text(automation.entity_id):
+            score = 170
+        elif name_norm and name_norm in qnorm:
+            score = 145 + min(len(name_tokens), 10)
+        elif qtokens and qtokens.issubset(name_tokens):
+            score = 100 + len(qtokens)
+        else:
+            overlap = len(qtokens & name_tokens)
+            if overlap:
+                score = int(55 * overlap / max(len(qtokens), 1))
+        if score > 0:
+            scored.append((automation, score))
+    scored.sort(key=lambda item: (-item[1], item[0].entity_id))
+    return scored[: max(1, limit)]
+
+
+def retrieve_automation_behavior(
+    query: str,
+    reconciliation: ReconciliationResult,
+    edges: Iterable[GraphEdge],
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Return the complete proved behavior of the best matching active automation."""
+    candidates = resolve_automations(query, reconciliation, limit=limit)
+    if not candidates:
+        return []
+    best = candidates[0][1]
+    candidates = [item for item in candidates if item[1] == best]
+    edge_list = list(edges)
+    out: list[dict[str, Any]] = []
+
+    def serialized(edge: GraphEdge) -> dict[str, Any]:
+        detail = _edge_detail(edge)
+        return {
+            "subject": edge.subject,
+            "predicate": edge.predicate,
+            "object": edge.object,
+            "source": edge.source.value,
+            "detail": detail,
+        }
+
+    for automation, score in candidates:
+        incoming = [
+            edge for edge in edge_list
+            if edge.object == automation.entity_id
+            and edge.predicate in {"TRIGGERS", "GUARDS", "WAITS_FOR", "LOCAL_GUARD"}
+        ]
+        outgoing = [
+            edge for edge in edge_list
+            if edge.subject == automation.entity_id
+            and edge.predicate in {
+                "ACTS_ON", "CALLS_AUTOMATION", "CALLS_SCRIPT", "CALLS_PYSCRIPT",
+                "CALLS_SERVICE", "BARRIER", "TERMINATES"
+            }
+        ]
+
+        unresolved = sorted({
+            node
+            for edge in incoming + outgoing
+            for node in (edge.subject, edge.object)
+            if node.startswith(("registry_ref:", "device_ref:", "area_ref:", "unresolved_ref:"))
+        })
+
+        out.append({
+            "score": score,
+            "automation_entity_id": automation.entity_id,
+            "automation_name": automation.name,
+            "match_by": automation.match_by,
+            "source_row": automation.source_row,
+            "triggers": [serialized(e) for e in incoming if e.predicate == "TRIGGERS"],
+            "guards": [serialized(e) for e in incoming if e.predicate == "GUARDS"],
+            "local_guards": [serialized(e) for e in incoming if e.predicate == "LOCAL_GUARD"],
+            "waits": [serialized(e) for e in incoming if e.predicate == "WAITS_FOR"],
+            "actions": [serialized(e) for e in outgoing if e.predicate == "ACTS_ON"],
+            "calls": [
+                serialized(e) for e in outgoing
+                if e.predicate in {
+                    "CALLS_AUTOMATION", "CALLS_SCRIPT", "CALLS_PYSCRIPT", "CALLS_SERVICE"
+                }
+            ],
+            "barriers": [serialized(e) for e in outgoing if e.predicate == "BARRIER"],
+            "terminates": [serialized(e) for e in outgoing if e.predicate == "TERMINATES"],
+            "unresolved_refs": unresolved,
+        })
+    return out
+
+
+def retrieve_operational_context(
+    query: str,
+    entities: Iterable[EntityRecord],
+    reconciliation: ReconciliationResult,
+    edges: Iterable[GraphEdge],
+) -> dict[str, Any]:
+    """Route a natural house question to the deterministic operational view.
+
+    Routing is based on identity scores and event-language, never on Drive row
+    ordering. This function remains prototype-only and is not wired to the live API.
+    """
+    entity_list = list(entities)
+    edge_list = list(edges)
+    normalized = normalize_text(query)
+
+    event_language = bool(
+        re.search(r"\b(quand|lorsque)\b", normalized)
+        or re.search(r"\bwhat happens when\b", normalized)
+    )
+    if event_language:
+        triggered = retrieve_triggered_chains(
+            query, entity_list, reconciliation, edge_list
+        )
+        if triggered:
+            return {"mode": "trigger_to_effect", "results": triggered}
+
+    automation_candidates = resolve_automations(query, reconciliation, limit=3)
+    entity_candidates = resolve_entities(query, entity_list, limit=3)
+    automation_score = automation_candidates[0][1] if automation_candidates else 0
+    entity_score = entity_candidates[0][1] if entity_candidates else 0
+
+    if automation_score >= 120 and automation_score > entity_score:
+        behavior = retrieve_automation_behavior(query, reconciliation, edge_list)
+        if behavior:
+            return {"mode": "automation_behavior", "results": behavior}
+
+    target = retrieve_automation_chains(
+        query, entity_list, reconciliation, edge_list
+    )
+    if target:
+        return {"mode": "target_to_automation", "results": target}
+
+    if automation_candidates:
+        behavior = retrieve_automation_behavior(query, reconciliation, edge_list)
+        if behavior:
+            return {"mode": "automation_behavior", "results": behavior}
+
+    return {"mode": "unresolved", "results": []}
+
 def _edge_detail(edge: GraphEdge) -> dict[str, Any]:
     return json.loads(edge.detail) if edge.detail else {}
 
