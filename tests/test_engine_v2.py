@@ -2436,3 +2436,59 @@ actions:
     assert retrieve_automation_chains(
         "allume lampe proved", entities, reconciliation, base
     ) == []
+
+
+def test_validated_rex_can_correct_documentary_meaning():
+    facts = [
+        SourceFact("wake_reference", FactType.MEANING, "old documentary meaning", SourceKind.MEMORY_IA),
+        SourceFact(
+            "wake_reference",
+            FactType.MEANING,
+            "validated field correction",
+            SourceKind.REX_VALIDATED,
+            evidence="rex:validated",
+        ),
+    ]
+    winner = choose_preferred_fact(facts)
+    assert winner is not None
+    assert winner.value == "validated field correction"
+    assert winner.source == SourceKind.REX_VALIDATED
+
+
+def test_validated_rex_still_cannot_override_current_ha_state():
+    facts = [
+        SourceFact("switch.phone", FactType.CURRENT_STATE, "on", SourceKind.HA_CURRENT),
+        SourceFact(
+            "switch.phone",
+            FactType.CURRENT_STATE,
+            "off",
+            SourceKind.REX_VALIDATED,
+            evidence="rex:validated",
+        ),
+    ]
+    winner = choose_preferred_fact(facts)
+    assert winner is not None
+    assert winner.value == "on"
+    assert winner.source == SourceKind.HA_CURRENT
+
+
+def test_validated_rex_still_cannot_override_production_behavior():
+    facts = [
+        SourceFact(
+            "automation.entry",
+            FactType.BEHAVIOR,
+            "lock unlock triggers lamp",
+            SourceKind.AUTOMATION_PRODUCTION,
+        ),
+        SourceFact(
+            "automation.entry",
+            FactType.BEHAVIOR,
+            "window triggers lamp",
+            SourceKind.REX_VALIDATED,
+            evidence="rex:validated",
+        ),
+    ]
+    winner = choose_preferred_fact(facts)
+    assert winner is not None
+    assert winner.value == "lock unlock triggers lamp"
+    assert winner.source == SourceKind.AUTOMATION_PRODUCTION
