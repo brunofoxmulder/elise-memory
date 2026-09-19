@@ -963,6 +963,17 @@ def _effect_for_service(service: str, data: Any = None) -> str | None:
             return "close"
         return "set_position"
 
+    # Preserve the user-visible intent of climate.set_hvac_mode. An explicit
+    # hvac_mode=off is a proved power-off behavior, not merely a generic mode
+    # change. This lets action-intent filtering answer "éteint la clim" from
+    # Production without weakening identity or proof rules.
+    if service == "climate.set_hvac_mode" and isinstance(data, dict):
+        hvac_mode = normalize_text(data.get("hvac_mode"))
+        if hvac_mode == "off":
+            return "turn_off"
+        if hvac_mode in {"heat", "cool", "heat_cool", "auto", "dry", "fan_only"}:
+            return "turn_on"
+
     method = service.rsplit(".", 1)[-1]
     generic = {
         "turn_on": "turn_on",
