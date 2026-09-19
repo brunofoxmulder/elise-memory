@@ -2,4 +2,5 @@
 set -e
 export ELISE_MEMORY_DB=/data/elise_memory.sqlite3
 export ELISE_MEMORY_SYNC_ENABLED="$(bashio::config 'sync_enabled')"
+export ELISE_MEMORY_GOOGLE_CREDENTIALS=/config/google-service-account.json
 exec elise-memory
