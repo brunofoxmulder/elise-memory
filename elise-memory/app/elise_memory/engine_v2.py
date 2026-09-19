@@ -1837,7 +1837,14 @@ def resolve_entities(
         if qnorm == name_norm or qnorm == entity_norm:
             score = 140
         elif name_norm and name_norm in qnorm:
-            score = 115 + min(len(name_tokens), 10)
+            # A generic one-token object name (for example "Tineco") must not
+            # beat a more specific entity such as "Tineco Battery" merely
+            # because the short name is a substring of the question.
+            if len(name_tokens) == 1 and len(qtokens) > 1:
+                overlap = len(qtokens & name_tokens)
+                score = int(60 * overlap / max(len(qtokens), 1))
+            else:
+                score = 115 + min(len(name_tokens), 10)
         elif qtokens and qtokens.issubset(name_tokens):
             score = 100 + len(qtokens)
         else:
@@ -1930,6 +1937,8 @@ def retrieve_automation_behavior(
                 "CALLS_SERVICE", "BARRIER", "TERMINATES"
             }
         ]
+        if not incoming and not outgoing:
+            continue
 
         unresolved = sorted({
             node
