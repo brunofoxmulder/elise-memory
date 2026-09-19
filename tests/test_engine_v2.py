@@ -2,13 +2,16 @@ import json
 
 from elise_memory.engine_v2 import (
     AutomationDoc,
+    BusinessFunctionDoc,
     EntityRecord,
     FactType,
     SourceFact,
     SourceKind,
     build_operational_graph,
+    business_context_for_entity,
     choose_preferred_fact,
     reconcile_automations,
+    reconcile_business_functions,
     resolve_entities,
     retrieve_automation_chains,
 )
@@ -339,3 +342,74 @@ def test_current_automation_without_document_never_gets_invented_behavior():
     graph = build_operational_graph(reconciliation)
     assert any(x.entity_id == "automation.undocumented" for x in reconciliation.current_without_document)
     assert all(edge.subject != "automation.undocumented" for edge in graph)
+
+
+def test_business_semantics_survive_a_stale_technical_binding():
+    entities = [EntityRecord("cover.current", "cover", "Lounge shutter", "open")]
+    docs = [
+        BusinessFunctionDoc(
+            "Lounge shutter position",
+            "cover.legacy",
+            "Cover",
+            "Protects the room from sun",
+            "Official",
+            "2026-07-01",
+        )
+    ]
+    result = reconcile_business_functions(entities, docs)
+    assert result[0].function == "Lounge shutter position"
+    assert result[0].rule == "Protects the room from sun"
+    assert result[0].binding_entity_id is None
+    assert result[0].binding_status == "stale_entity"
+
+
+def test_business_alias_is_bound_only_by_exact_current_ha_name():
+    entities = [
+        EntityRecord("automation.current", "automation", "Current shutter rule", "on")
+    ]
+    docs = [
+        BusinessFunctionDoc(
+            "Shutter rule",
+            "Alias HA : Current shutter rule",
+            "Automation",
+            "Runs when conditions are met",
+            "Official",
+            "2026-08-01",
+        )
+    ]
+    result = reconcile_business_functions(entities, docs)
+    assert result[0].binding_entity_id == "automation.current"
+    assert result[0].binding_status == "current_alias"
+
+
+def test_business_context_excludes_stale_binding():
+    entities = [
+        EntityRecord("cover.current", "cover", "Lounge shutter", "open"),
+    ]
+    docs = [
+        BusinessFunctionDoc("Old", "cover.legacy", "Cover", "old rule", "Official"),
+        BusinessFunctionDoc("Current", "cover.current", "Cover", "current rule", "Official"),
+    ]
+    result = reconcile_business_functions(entities, docs)
+    context = business_context_for_entity("cover.current", result)
+    assert [item.function for item in context] == ["Current"]
+
+
+def test_current_binding_and_semantics_are_not_collapsed_into_one_fact():
+    entities = [
+        EntityRecord("cover.new", "cover", "Shutter", "open"),
+    ]
+    docs = [
+        BusinessFunctionDoc(
+            "Position shutter", "cover.old", "Cover", "stable business rule", "Official"
+        ),
+        BusinessFunctionDoc(
+            "Local shutter", "cover.new", "Cover", "local implementation", "Official"
+        ),
+    ]
+    result = reconcile_business_functions(entities, docs)
+    old, new = result
+    assert old.rule == "stable business rule"
+    assert old.binding_status == "stale_entity"
+    assert new.binding_status == "current_entity"
+    assert business_context_for_entity("cover.new", result) == [new]
