@@ -13,13 +13,14 @@ from .store import MemoryStore
 from .knowledge import KnowledgeStore
 from .sync import synchronize_canonical
 from .runtime import build_reader_from_env, build_scheduler, sync_runtime_status
+from .resolver import ResolutionResult, resolve_current_entity
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 knowledge_store = KnowledgeStore(DB_PATH)
 scheduler = None
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.13")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.17")
 
 
 @app.on_event("startup")
@@ -78,7 +79,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "mode": "isolated",
-        "version": "0.1.0-dev.13",
+        "version": "0.1.0-dev.17",
         "sync": sync_state,
     }
 
@@ -124,3 +125,11 @@ def confirm_greeting(item: GreetingCommit) -> None:
         commit_greeting(store, HomeAssistantReader(), wake_at=item.wake_at)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/v1/resolve/entity", response_model=ResolutionResult)
+def resolve_entity(q: str, limit: int = 5) -> ResolutionResult:
+    """Resolve an intended target against the current HA snapshot only."""
+    if not q.strip():
+        raise HTTPException(status_code=422, detail="query must not be empty")
+    return resolve_current_entity(HomeAssistantReader(), q, limit=limit)

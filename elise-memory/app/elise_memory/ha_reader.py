@@ -37,6 +37,17 @@ class HomeAssistantReader:
         p = self._get_json(f"{self.base_url}/api/states/{entity_id}")
         return HAState(p["entity_id"], p["state"], datetime.fromisoformat(p["last_changed"]), p.get("attributes", {}))
 
+    def get_states(self):
+        """Return the current HA state registry snapshot, read-only."""
+        payload = self._get_json(f"{self.base_url}/api/states")
+        return [
+            HAState(
+                p["entity_id"], p["state"], datetime.fromisoformat(p["last_changed"]),
+                p.get("attributes", {}),
+            )
+            for p in payload
+        ]
+
     def get_history(self, entity_id, start):
         q = urlencode({"filter_entity_id": entity_id, "minimal_response": "", "no_attributes": ""})
         p = self._get_json(f"{self.base_url}/api/history/period/{start.isoformat()}?{q}")

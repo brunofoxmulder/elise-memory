@@ -101,3 +101,16 @@ def test_sync_health_exposes_last_successful_source_stats(tmp_path):
     health = store.sync_health()
     assert health["sources"]["metier"] == {"source_rows": 42, "compiled_count": 42}
     assert health["last_sync"]["source_count"] == 1
+
+
+def test_candidate_knowledge_is_not_returned_to_agent(tmp_path):
+    store = KnowledgeStore(tmp_path / "memory.db")
+    store.initialize()
+    candidate = KnowledgeCreate(
+        key="light.salon", object_type="entity", value="unverified mapping",
+        origin="rex", source_id="rex:candidate", status="candidate",
+    )
+    store.replace_current(candidate, _hash(candidate.value))
+    result = store.search("salon")
+    assert result["knowledge"] == []
+    assert store.active("light.salon") == []

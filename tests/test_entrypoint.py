@@ -50,14 +50,14 @@ def test_shipped_runtime_contains_all_local_imports():
     )
 
 
-def test_dev13_version_is_aligned_across_shipped_artifacts():
+def test_dev17_version_is_aligned_across_shipped_artifacts():
     from elise_memory import __version__
     from elise_memory.app import app
 
-    assert __version__ == "0.1.0-dev.13"
-    assert app.version == "0.1.0-dev.13"
+    assert __version__ == "0.1.0-dev.17"
+    assert app.version == "0.1.0-dev.17"
 
     manifest = (ROOT / "elise-memory" / "config.yaml").read_text(encoding="utf-8")
     pyproject = (SHIPPED_APP / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version: "0.1.0-dev.13"' in manifest
-    assert 'version = "0.1.0-dev.13"' in pyproject
+    assert 'version: "0.1.0-dev.17"' in manifest
+    assert 'version = "0.1.0-dev.17"' in pyproject
