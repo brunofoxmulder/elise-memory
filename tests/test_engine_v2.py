@@ -752,5 +752,8 @@ actions:
     result = retrieve_automation_chains(
         "what turns off the entry lamp", entities, reconciliation, graph
     )
-    assert result[0]["automation_entity_id"] == "automation.generic_off"
-    assert result[0]["effect"] == "turn_off"
+    assert {item["automation_entity_id"] for item in result} == {
+        "automation.entry_main",
+        "automation.generic_off",
+    }
+    assert all(item["effect"] == "turn_off" for item in result)
