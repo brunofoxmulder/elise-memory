@@ -495,7 +495,7 @@ def test_drive_entry_light_unlock_is_a_real_trigger_not_window_opening():
         "automation.entree_presence",
         "automation.entree_unlock",
     }
-    assert all(x["trigger"] == "lock.porte_dentree" for x in entry)
+    assert all(x["source_entity_id"] == "lock.porte_dentree" for x in entry)
 
 
 def test_drive_entry_light_does_not_invent_window_opening_as_trigger():
@@ -824,7 +824,7 @@ mode: single
         "qu'est-ce qui éteint la prise brosse à dents", entities, reconciliation, resolved
     )[0]
     assert on["effect"] == "turn_on"
-    assert on["trigger"] == "binary_sensor.brosse_utilisee"
+    assert any(x["subject"] == "binary_sensor.brosse_utilisee" and x["predicate"] == "TRIGGERS" for x in on["context"])
     assert all(x["predicate"] != "DELAY_BARRIER" for x in on["barriers"])
     assert off["effect"] == "turn_off"
     assert any(
@@ -929,8 +929,8 @@ mode: single
     item = next(x for x in result if x["automation_entity_id"] == "automation.salon_night_close")
     assert item["target"] == "cover.volet_salon_2"
     assert item["effect"] == "close"
-    assert item["trigger_detail"]["from"] == "on"
-    assert item["trigger_detail"]["to"] == "off"
+    assert item["trigger_detail"]["from_state"] == "on"
+    assert item["trigger_detail"]["to_state"] == "off"
     assert not any(x["effect"] in {"open_cover", "set_cover_position"} for x in result)
 
 
@@ -1026,8 +1026,8 @@ mode: single
     )
     close_item = next(x for x in closed if x["automation_entity_id"] == "automation.terrace_night_close")
     assert close_item["effect"] == "close"
-    assert close_item["trigger_detail"]["from"] == "on"
-    assert close_item["trigger_detail"]["to"] == "off"
+    assert close_item["trigger_detail"]["from_state"] == "on"
+    assert close_item["trigger_detail"]["to_state"] == "off"
     assert close_item["target"] == "cover.volet_terrasse_2"
 
 
