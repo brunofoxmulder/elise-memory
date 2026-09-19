@@ -91,7 +91,7 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.R8_RELATION: 35,
         SourceKind.METIER: 30,
         SourceKind.MEMORY_IA: 20,
-        SourceKind.HISTORY: 10,,
+        SourceKind.HISTORY: 10,
         SourceKind.REX: 25
     },
     FactType.CURRENT_STATE: {
@@ -101,7 +101,7 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.R8_RELATION: 15,
         SourceKind.METIER: 10,
         SourceKind.MEMORY_IA: 10,
-        SourceKind.HISTORY: 5,,
+        SourceKind.HISTORY: 5,
         SourceKind.REX: 25
     },
     FactType.BEHAVIOR: {
@@ -111,7 +111,7 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.METIER: 55,
         SourceKind.MEMORY_IA: 45,
         SourceKind.HA_CURRENT: 30,
-        SourceKind.HISTORY: 15,,
+        SourceKind.HISTORY: 15,
         SourceKind.REX: 25
     },
     FactType.RELATION: {
@@ -121,7 +121,7 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.METIER: 50,
         SourceKind.MEMORY_IA: 40,
         SourceKind.HA_CURRENT: 30,
-        SourceKind.HISTORY: 15,,
+        SourceKind.HISTORY: 15,
         SourceKind.REX: 25
     },
     FactType.MEANING: {
@@ -131,7 +131,7 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.AUTOMATION_PRODUCTION: 60,
         SourceKind.OBJECTS_HA: 40,
         SourceKind.HA_CURRENT: 30,
-        SourceKind.HISTORY: 20,,
+        SourceKind.HISTORY: 20,
         SourceKind.REX: 25
     },
     FactType.HISTORY: {
@@ -141,7 +141,7 @@ _AUTHORITY: dict[FactType, dict[SourceKind, int]] = {
         SourceKind.R8_RELATION: 40,
         SourceKind.AUTOMATION_PRODUCTION: 20,
         SourceKind.OBJECTS_HA: 10,
-        SourceKind.HA_CURRENT: 10,,
+        SourceKind.HA_CURRENT: 10,
         SourceKind.REX: 25
     },
 }
