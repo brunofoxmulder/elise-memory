@@ -57,7 +57,7 @@ class KnowledgeStore:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_current_source
                 ON knowledge(origin, source_id, key)
-                WHERE status IN ('current','validated','candidate');
+                WHERE status IN ('current','validated');
                 CREATE INDEX IF NOT EXISTS idx_knowledge_key_status
                 ON knowledge(key, status);
                 CREATE TABLE IF NOT EXISTS knowledge_relations (
@@ -97,7 +97,7 @@ class KnowledgeStore:
             row = conn.execute(
                 """SELECT id, content_hash FROM knowledge
                    WHERE origin=? AND source_id=? AND key=?
-                   AND status IN ('current','validated','candidate')
+                   AND status IN ('current','validated')
                    ORDER BY id DESC LIMIT 1""",
                 (item.origin, item.source_id, item.key),
             ).fetchone()
@@ -127,7 +127,7 @@ class KnowledgeStore:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """SELECT * FROM knowledge WHERE key=?
-                   AND status IN ('current','validated','candidate')
+                   AND status IN ('current','validated')
                    ORDER BY CASE origin WHEN 'canonical' THEN 0 ELSE 1 END, id DESC""",
                 (key,),
             ).fetchall()
@@ -150,7 +150,7 @@ class KnowledgeStore:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 f"""SELECT * FROM knowledge
-                    WHERE status IN ('current','validated','candidate')
+                    WHERE status IN ('current','validated')
                     AND ({clause})
                     ORDER BY CASE origin WHEN 'canonical' THEN 0 ELSE 1 END,
                              CASE WHEN lower(key)=? THEN 0 ELSE 1 END,
