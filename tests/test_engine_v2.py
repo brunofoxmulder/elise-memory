@@ -5,6 +5,7 @@ from elise_memory.engine_v2 import (
     BusinessFunctionDoc,
     EntityRecord,
     ObjectDependencyDoc,
+    R8RelationDoc,
     FactType,
     SourceFact,
     SourceKind,
@@ -14,6 +15,8 @@ from elise_memory.engine_v2 import (
     dependency_edges,
     reconcile_automations,
     reconcile_business_functions,
+    r8_edges,
+    r8_relations_from_rows,
     resolve_entities,
     retrieve_automation_chains,
 )
@@ -467,3 +470,68 @@ def test_objects_ha_current_entity_can_enrich_a_reconciled_automation():
     assert [(edge.subject, edge.predicate, edge.object) for edge in dep_edges] == [
         ("automation.entry_main", "USES", "binary_sensor.entry_motion")
     ]
+
+
+def test_r8_relation_preserves_role_confidence_and_proof_without_becoming_action():
+    entities, reconciliation, _ = _engine()
+    relations = [
+        R8RelationDoc(
+            relation_id="REL-1",
+            chain="Lighting",
+            source_type="Entity",
+            source_id="binary_sensor.entry_motion",
+            relation="déclenche",
+            target_type="Automatisation HA",
+            target_id="Entry light main",
+            role="Start the lighting chain",
+            evidence="Production YAML + HA inventory",
+            confidence="Élevée",
+            status="Validé / actif",
+            last_verification="2026-09-19",
+        )
+    ]
+    edges = r8_edges(entities, reconciliation, relations)
+    assert len(edges) == 1
+    edge = edges[0]
+    assert edge.source == "binary_sensor.entry_motion"
+    assert edge.object == "automation.entry_main"
+    assert edge.predicate.startswith("R8:")
+    assert edge.predicate != "ACTS_ON"
+    detail = json.loads(edge.detail)
+    assert detail["role"] == "Start the lighting chain"
+    assert detail["confidence"] == "Élevée"
+    assert detail["evidence"] == "Production YAML + HA inventory"
+
+
+def test_r8_parser_rejects_historical_or_observation_status():
+    header = [
+        "Relation_ID", "Chaîne_fonctionnelle", "Source_type", "Source_ID",
+        "Relation", "Cible_type", "Cible_ID", "Rôle_ou_effet",
+        "Source_de_preuve", "Confiance", "Statut", "Dernière_vérification",
+    ]
+    rows = [
+        ["R1", "A", "Entity", "light.entry", "uses", "Automation", "Entry light main",
+         "x", "proof", "High", "Validé / actif", "2026-09-19"],
+        ["R2", "A", "Entity", "light.entry", "uses", "Automation", "Entry light main",
+         "x", "proof", "High", "Actif historique / legacy", "2026-07-01"],
+        ["R3", "A", "Entity", "light.entry", "uses", "Automation", "Entry light main",
+         "x", "proof", "High", "Production installée / automatique à observer", "2026-09-01"],
+    ]
+    result = r8_relations_from_rows(header, rows)
+    assert [item.relation_id for item in result] == ["R1"]
+
+
+def test_r8_document_only_relation_cannot_answer_operational_question():
+    entities, reconciliation, _ = _engine()
+    relations = [
+        R8RelationDoc(
+            "REL-X", "Old chain", "Doc", "Bathroom room", "mentions",
+            "Doc", "Entry lamp", "Historical note", "old doc", "Low",
+            "Validé", "2026-07-01",
+        )
+    ]
+    edges = r8_edges(entities, reconciliation, relations)
+    result = retrieve_automation_chains(
+        "what turns on the bathroom lamp", entities, reconciliation, edges
+    )
+    assert result == []
