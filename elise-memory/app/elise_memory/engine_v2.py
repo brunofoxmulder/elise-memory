@@ -1350,6 +1350,87 @@ def resolve_entities(
     return scored[: max(1, limit)]
 
 
+def _edge_detail(edge: GraphEdge) -> dict[str, Any]:
+    return json.loads(edge.detail) if edge.detail else {}
+
+
+def _branch_is_ancestor(context_path: str, action_path: str) -> bool:
+    return (
+        context_path == "root"
+        or context_path == action_path
+        or action_path.startswith(context_path + "/")
+    )
+
+
+def _branch_entry_step(parent_path: str, child_path: str) -> int | None:
+    """Return the step that entered the first child branch below parent_path."""
+    if parent_path == child_path or not child_path.startswith(parent_path + "/"):
+        return None
+    rest = child_path[len(parent_path) + 1 :]
+    first = rest.split("/", 1)[0]
+    match = re.match(r"(?:choose|if|parallel|repeat)@(\d+)", first)
+    return int(match.group(1)) if match else None
+
+
+def _sequence_edge_precedes_action(
+    context_detail: dict[str, Any],
+    action_detail: dict[str, Any],
+) -> bool:
+    context_path = str(context_detail.get("branch_path") or "root")
+    action_path = str(action_detail.get("branch_path") or "root")
+    if not _branch_is_ancestor(context_path, action_path):
+        return False
+
+    context_step = context_detail.get("step_index")
+    action_step = action_detail.get("step_index")
+    if not isinstance(context_step, int):
+        return True
+
+    if context_path == action_path:
+        return not isinstance(action_step, int) or context_step < action_step
+
+    entry_step = _branch_entry_step(context_path, action_path)
+    return entry_step is None or context_step < entry_step
+
+
+def _context_for_action(
+    automation_id: str,
+    action_detail: dict[str, Any],
+    edge_list: list[GraphEdge],
+) -> list[GraphEdge]:
+    """Keep only trigger/guard/wait context that can apply to this action path."""
+    action_path = str(action_detail.get("branch_path") or "root")
+    selected: list[GraphEdge] = []
+    for edge in edge_list:
+        if edge.object != automation_id:
+            continue
+        if edge.predicate not in {"TRIGGERS", "GUARDS", "WAITS_FOR", "LOCAL_GUARD"}:
+            continue
+        detail = _edge_detail(edge)
+        context_path = str(detail.get("branch_path") or "root")
+        if not _branch_is_ancestor(context_path, action_path):
+            continue
+        if edge.predicate == "WAITS_FOR" and not _sequence_edge_precedes_action(detail, action_detail):
+            continue
+        selected.append(edge)
+    return selected
+
+
+def _barriers_before_action(
+    automation_id: str,
+    action_detail: dict[str, Any],
+    edge_list: list[GraphEdge],
+) -> list[GraphEdge]:
+    selected: list[GraphEdge] = []
+    for edge in edge_list:
+        if edge.subject != automation_id or edge.predicate != "BARRIER":
+            continue
+        detail = _edge_detail(edge)
+        if _sequence_edge_precedes_action(detail, action_detail):
+            selected.append(edge)
+    return selected
+
+
 def retrieve_automation_chains(
     query: str,
     entities: Iterable[EntityRecord],
@@ -1398,12 +1479,12 @@ def retrieve_automation_chains(
             if intent and effect == intent:
                 score += 40
 
-            context_edges = [
-                candidate
-                for candidate in edge_list
-                if candidate.object == automation.entity_id
-                and candidate.predicate in {"TRIGGERS", "GUARDS", "WAITS_FOR", "LOCAL_GUARD"}
-            ]
+            context_edges = _context_for_action(
+                automation.entity_id, detail, edge_list
+            )
+            barriers = _barriers_before_action(
+                automation.entity_id, detail, edge_list
+            )
             results.append(
                 {
                     "score": score,
@@ -1417,9 +1498,16 @@ def retrieve_automation_chains(
                         {
                             "subject": item.subject,
                             "predicate": item.predicate,
-                            "detail": json.loads(item.detail) if item.detail else {},
+                            "detail": _edge_detail(item),
                         }
                         for item in context_edges
+                    ],
+                    "barriers": [
+                        {
+                            "object": item.object,
+                            "detail": _edge_detail(item),
+                        }
+                        for item in barriers
                     ],
                 }
             )
@@ -1507,14 +1595,14 @@ def retrieve_triggered_chains(
                     "CALLS_AUTOMATION", "CALLS_SCRIPT", "CALLS_PYSCRIPT", "CALLS_SERVICE"
                 }
             ]
-            context_edges = [
-                edge for edge in edge_list
-                if edge.object == automation.entity_id
-                and edge.predicate in {"GUARDS", "WAITS_FOR", "LOCAL_GUARD"}
-            ]
-
             for action in actions:
-                detail = json.loads(action.detail) if action.detail else {}
+                detail = _edge_detail(action)
+                context_edges = _context_for_action(
+                    automation.entity_id, detail, edge_list
+                )
+                barriers = _barriers_before_action(
+                    automation.entity_id, detail, edge_list
+                )
                 results.append(
                     {
                         "score": object_score + 100,
@@ -1530,9 +1618,16 @@ def retrieve_triggered_chains(
                             {
                                 "subject": item.subject,
                                 "predicate": item.predicate,
-                                "detail": json.loads(item.detail) if item.detail else {},
+                                "detail": _edge_detail(item),
                             }
                             for item in context_edges
+                        ],
+                        "barriers": [
+                            {
+                                "object": item.object,
+                                "detail": _edge_detail(item),
+                            }
+                            for item in barriers
                         ],
                     }
                 )
@@ -1554,7 +1649,7 @@ def retrieve_triggered_chains(
                                 {
                                     "subject": item.subject,
                                     "predicate": item.predicate,
-                                    "detail": json.loads(item.detail) if item.detail else {},
+                                    "detail": _edge_detail(item),
                                 }
                                 for item in context_edges
                             ],
