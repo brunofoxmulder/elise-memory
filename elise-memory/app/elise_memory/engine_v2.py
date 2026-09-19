@@ -786,6 +786,8 @@ def _walk_trigger(
         return
     if not isinstance(node, dict):
         return
+    if node.get("enabled") is False:
+        return
 
     detail = _detail(
         trigger=node.get("trigger") or node.get("platform"),
@@ -910,6 +912,8 @@ def _walk_condition(
         return
     if not isinstance(node, dict):
         return
+    if node.get("enabled") is False:
+        return
 
     condition = node.get("condition")
     detail = _detail(
@@ -952,6 +956,21 @@ def _walk_condition(
                     after_offset=node.get("after_offset"),
                     before_offset=node.get("before_offset"),
                     branch_path=branch_path, expected=expected,
+                ),
+            )
+        )
+    elif condition == "time":
+        edges.append(
+            GraphEdge(
+                "time_window", predicate, automation_id,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(
+                    condition="time",
+                    after=node.get("after"),
+                    before=node.get("before"),
+                    weekday=node.get("weekday"),
+                    branch_path=branch_path,
+                    expected=expected,
                 ),
             )
         )
@@ -1005,8 +1024,34 @@ def _walk_actions(
                 item, automation_id, edges,
                 branch_path=branch_path, step_index=index,
             )
+            if (
+                isinstance(item, dict)
+                and item.get("enabled") is not False
+                and "stop" in item
+            ):
+                break
         return
     if not isinstance(node, dict):
+        return
+    if node.get("enabled") is False:
+        return
+
+    if "stop" in node:
+        edges.append(
+            GraphEdge(
+                automation_id,
+                "TERMINATES",
+                "stop",
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(
+                    message=node.get("stop"),
+                    error=node.get("error"),
+                    response_variable=node.get("response_variable"),
+                    branch_path=branch_path,
+                    step_index=step_index,
+                ),
+            )
+        )
         return
 
     if "delay" in node:
@@ -1025,32 +1070,50 @@ def _walk_actions(
             node["wait_for_trigger"], automation_id, edges,
             predicate="WAITS_FOR", branch_path=branch_path, step_index=step_index,
         )
-    if "wait_template" in node:
-        template = node.get("wait_template")
-        refs = _template_refs(template)
-        if refs:
-            for ref in refs:
-                edges.append(
-                    GraphEdge(
-                        ref, "WAITS_FOR", automation_id,
-                        SourceKind.AUTOMATION_PRODUCTION,
-                        _detail(
-                            via="wait_template", branch_path=branch_path,
-                            step_index=step_index,
-                        ),
-                    )
-                )
-        else:
+        if node.get("timeout") is not None:
             edges.append(
                 GraphEdge(
-                    automation_id, "BARRIER", "wait_template",
+                    automation_id,
+                    "BARRIER",
+                    "wait_for_trigger_timeout",
                     SourceKind.AUTOMATION_PRODUCTION,
                     _detail(
-                        template=template, branch_path=branch_path,
-                        step_index=step_index, kind="wait_template",
+                        kind="wait_for_trigger",
+                        timeout=node.get("timeout"),
+                        continue_on_timeout=node.get("continue_on_timeout"),
+                        branch_path=branch_path,
+                        step_index=step_index,
                     ),
                 )
             )
+    if "wait_template" in node:
+        template = node.get("wait_template")
+        refs = _template_refs(template)
+        for ref in refs:
+            edges.append(
+                GraphEdge(
+                    ref, "WAITS_FOR", automation_id,
+                    SourceKind.AUTOMATION_PRODUCTION,
+                    _detail(
+                        via="wait_template", branch_path=branch_path,
+                        step_index=step_index,
+                    ),
+                )
+            )
+        edges.append(
+            GraphEdge(
+                automation_id, "BARRIER", "wait_template",
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(
+                    template=template,
+                    timeout=node.get("timeout"),
+                    continue_on_timeout=node.get("continue_on_timeout"),
+                    branch_path=branch_path,
+                    step_index=step_index,
+                    kind="wait_template",
+                ),
+            )
+        )
 
     service = node.get("action") or node.get("service")
     if isinstance(service, str) and "." in service:
