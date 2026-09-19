@@ -2129,10 +2129,36 @@ def retrieve_automation_chains(
     # candidates may enter operational retrieval; lower-scored lexical matches
     # (for example another lamp elsewhere in the house) must not compete.
     best_object_score = candidates[0][1]
-    candidates = [
-        candidate for candidate in candidates
-        if candidate[1] == best_object_score
-    ]
+    # Keep the strongest current-identity candidate for each domain hinted by
+    # the user's object phrase. A generic device-family sensor may score
+    # lexically above the actual controllable switch (for example "Tineco
+    # Online" vs "prise Tineco"). Domain hints are operational evidence and
+    # must be allowed to select the best switch/cover/light candidate without
+    # opening the door to unrelated lower-scored objects.
+    qtokens = _object_tokens(query)
+    hinted_domains: set[str] = set()
+    if {"lampe", "hotte"} & qtokens:
+        hinted_domains.add("light")
+    if "volet" in qtokens:
+        hinted_domains.add("cover")
+    if {"prise", "chargeur"} & qtokens or re.search(
+        r"\b(?:re)?charg\w*\b", normalize_text(query)
+    ):
+        hinted_domains.add("switch")
+    if "serrure" in qtokens or re.search(
+        r"\b(?:de)?verrouill\w*\b", normalize_text(query)
+    ):
+        hinted_domains.add("lock")
+
+    if hinted_domains:
+        hinted = [candidate for candidate in candidates if candidate[0].domain in hinted_domains]
+        if hinted:
+            hinted_best = hinted[0][1]
+            candidates = [candidate for candidate in hinted if candidate[1] == hinted_best]
+        else:
+            candidates = [candidate for candidate in candidates if candidate[1] == best_object_score]
+    else:
+        candidates = [candidate for candidate in candidates if candidate[1] == best_object_score]
 
     active = {
         item.entity_id: item
