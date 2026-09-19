@@ -6,6 +6,14 @@ from elise_memory.knowledge import KnowledgeCreate, KnowledgeStore
 from elise_memory.sync import synchronize_canonical
 
 
+@pytest.fixture(autouse=True)
+def canonical_source_env(monkeypatch):
+    monkeypatch.setenv("ELISE_MEMORY_SHEET_HOME_ASSISTANT_ID", "test-home-assistant")
+    monkeypatch.setenv("ELISE_MEMORY_SHEET_INDEX_ID", "test-index")
+    monkeypatch.setenv("ELISE_MEMORY_SHEET_AUTOMATIONS_ID", "test-automations")
+    monkeypatch.setenv("ELISE_MEMORY_SHEET_SCRIPTS_ID", "test-scripts")
+
+
 class FakeReader:
     def __init__(self, by_sheet):
         self.by_sheet=by_sheet
@@ -69,13 +77,12 @@ def test_relation_failure_rolls_back_knowledge_snapshot(tmp_path):
 
 
 def test_sync_rejects_semantically_empty_required_source_before_publish(tmp_path):
-    from elise_memory.canonical_sources import CANONICAL_RANGES
-    from elise_memory.sync import synchronize_canonical
+    from elise_memory.canonical_sources import canonical_ranges
 
     class EmptyRelationsReader(FakeReader):
         def values(self, source):
             values = super().values(source)
-            if source == CANONICAL_RANGES["relations"]:
+            if source == canonical_ranges()["relations"]:
                 return [values[0]]
             return values
 

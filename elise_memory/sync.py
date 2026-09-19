@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .canonical_sources import CANONICAL_RANGES
+from .canonical_sources import canonical_ranges, require_canonical_source_ids
 from .compiler import (
     CompiledKnowledge, compile_automations, compile_memory_ia,
     compile_metier, compile_relations, compile_scripts,
@@ -29,9 +29,12 @@ def _split(values):
 
 def synchronize_canonical(store: KnowledgeStore, reader: GoogleSheetsReader) -> SyncReport:
     """Read every required source first; publish only after all compile successfully."""
+    require_canonical_source_ids()
+    sources = canonical_ranges()
+
     raw = {}
     counts = {}
-    for name, source in CANONICAL_RANGES.items():
+    for name, source in sources.items():
         values = reader.values(source)
         header, rows = _split(values)
         raw[name] = (header, rows)
@@ -66,7 +69,7 @@ def synchronize_canonical(store: KnowledgeStore, reader: GoogleSheetsReader) -> 
         relations=relations,
         source_stats={
             name: (counts[name], compiled_by_source[name])
-            for name in CANONICAL_RANGES
+            for name in sources
         },
     )
     return SyncReport(

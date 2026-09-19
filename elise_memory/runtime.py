@@ -1,11 +1,12 @@
 """Runtime wiring for optional canonical synchronization.
 
-The feature is inert unless ELISE_MEMORY_SYNC_ENABLED=true and a credentials
-file path is explicitly provided.
+The feature is inert unless ELISE_MEMORY_SYNC_ENABLED=true. Google credentials
+and canonical workbook IDs are private runtime configuration.
 """
 
 import os
 
+from .canonical_sources import require_canonical_source_ids
 from .google_sheets import GoogleSheetsReader
 from .knowledge import KnowledgeStore
 from .scheduler import NightlyScheduler, SchedulerConfig
@@ -22,6 +23,15 @@ def build_scheduler(store: KnowledgeStore) -> NightlyScheduler | None:
     credentials = os.getenv("ELISE_MEMORY_GOOGLE_CREDENTIALS", "").strip()
     if not credentials:
         raise RuntimeError("google_credentials_required")
+
+    # Keep the API available after an upgrade even if the new private source
+    # configuration has not yet been entered. No synchronization is scheduled.
+    try:
+        require_canonical_source_ids()
+    except RuntimeError as exc:
+        store.record_sync_failure(f"RuntimeError: {exc}")
+        return None
+
     config = SchedulerConfig(
         enabled=True,
         hour=int(os.getenv("ELISE_MEMORY_SYNC_HOUR", "3")),
@@ -45,4 +55,5 @@ def build_reader_from_env() -> GoogleSheetsReader:
     credentials = os.getenv("ELISE_MEMORY_GOOGLE_CREDENTIALS", "").strip()
     if not credentials:
         raise RuntimeError("google_credentials_required")
+    require_canonical_source_ids()
     return GoogleSheetsReader(credentials)

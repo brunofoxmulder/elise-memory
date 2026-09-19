@@ -1,6 +1,6 @@
 name: Élise Memory
 description: Mémoire locale déterministe de Maison Cognitive
-version: "0.1.0-dev.10"
+version: "0.1.0-dev.11"
 slug: elise_memory
 init: false
 hassio_api: true
@@ -20,5 +20,13 @@ map:
     read_only: true
 options:
   sync_enabled: false
+  sheet_home_assistant_id: ""
+  sheet_index_id: ""
+  sheet_automations_id: ""
+  sheet_scripts_id: ""
 schema:
   sync_enabled: bool
+  sheet_home_assistant_id: str
+  sheet_index_id: str
+  sheet_automations_id: str
+  sheet_scripts_id: str
