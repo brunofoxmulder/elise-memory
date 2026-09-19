@@ -1918,6 +1918,145 @@ def retrieve_automation_chains(
 
 
 
+
+def assemble_evidence_context(
+    query: str,
+    entities: Iterable[EntityRecord],
+    reconciliation: ReconciliationResult,
+    production_edges: Iterable[GraphEdge],
+    *,
+    dependency_edges_in: Iterable[GraphEdge] = (),
+    r8_edges_in: Iterable[GraphEdge] = (),
+    business_functions: Iterable[ReconciledBusinessFunction] = (),
+) -> dict[str, Any]:
+    """Assemble Drive evidence without letting lower layers invent behavior.
+
+    The operational core comes only from current identity + reconciled Production.
+    Objects HA, R8 and métier are attached afterwards as enrichment/corroboration.
+    """
+    entity_list = list(entities)
+    production = list(production_edges)
+    deps = list(dependency_edges_in)
+    r8 = list(r8_edges_in)
+    business = list(business_functions)
+
+    core = retrieve_operational_context(
+        query, entity_list, reconciliation, production
+    )
+
+    relevant_nodes: set[str] = set()
+    relevant_automations: set[str] = set()
+    for item in core.get("results", []):
+        for key in (
+            "target_entity_id", "target", "source_entity_id",
+            "automation_entity_id",
+        ):
+            value = item.get(key)
+            if isinstance(value, str):
+                relevant_nodes.add(value)
+                if value.startswith("automation."):
+                    relevant_automations.add(value)
+
+        if core.get("mode") == "automation_behavior":
+            auto_id = item.get("automation_entity_id")
+            if isinstance(auto_id, str):
+                relevant_automations.add(auto_id)
+                relevant_nodes.add(auto_id)
+            for group in ("triggers", "guards", "local_guards", "waits", "actions", "calls"):
+                for edge in item.get(group, []):
+                    for key in ("subject", "object"):
+                        value = edge.get(key)
+                        if isinstance(value, str):
+                            relevant_nodes.add(value)
+
+    entity_index = {entity.entity_id: entity for entity in entity_list}
+    current_identity = [
+        {
+            "entity_id": entity_id,
+            "domain": entity_index[entity_id].domain,
+            "name": entity_index[entity_id].name,
+            "snapshot_state": entity_index[entity_id].state,
+        }
+        for entity_id in sorted(relevant_nodes)
+        if entity_id in entity_index
+    ]
+
+    dependency_context = [
+        {
+            "subject": edge.subject,
+            "predicate": edge.predicate,
+            "object": edge.object,
+            "source": edge.source.value,
+            "detail": _edge_detail(edge),
+        }
+        for edge in deps
+        if edge.subject in relevant_automations
+        or edge.subject in relevant_nodes
+        or edge.object in relevant_nodes
+    ]
+
+    r8_context = [
+        {
+            "subject": edge.subject,
+            "predicate": edge.predicate,
+            "object": edge.object,
+            "source": edge.source.value,
+            "detail": _edge_detail(edge),
+        }
+        for edge in r8
+        if edge.subject in relevant_nodes
+        or edge.object in relevant_nodes
+        or edge.subject in relevant_automations
+        or edge.object in relevant_automations
+    ]
+
+    business_context: list[dict[str, Any]] = []
+    for entity_id in sorted(relevant_nodes):
+        for item in business_context_for_entity(entity_id, business):
+            business_context.append(
+                {
+                    "entity_id": entity_id,
+                    "function": item.function,
+                    "rule": item.rule,
+                    "object_type": item.object_type,
+                    "source_official": item.source_official,
+                    "last_validation": item.last_validation,
+                    "binding_status": item.binding_status,
+                }
+            )
+
+    unresolved = sorted({
+        node
+        for edge in production
+        if edge.subject in relevant_automations
+        or edge.object in relevant_automations
+        or edge.subject in relevant_nodes
+        or edge.object in relevant_nodes
+        for node in (edge.subject, edge.object)
+        if node.startswith(("registry_ref:", "device_ref:", "area_ref:", "unresolved_ref:"))
+    })
+
+    return {
+        "query": query,
+        "operational": core,
+        "operational_answer_available": core.get("mode") != "unresolved",
+        "layers": {
+            "current_identity": current_identity,
+            "production": core.get("results", []),
+            "objects_ha": dependency_context,
+            "r8": r8_context,
+            "metier": business_context,
+        },
+        "unresolved_refs": unresolved,
+        "precedence": [
+            "current_identity",
+            "production",
+            "objects_ha",
+            "r8",
+            "metier",
+        ],
+    }
+
 def retrieve_triggered_chains(
     query: str,
     entities: Iterable[EntityRecord],
