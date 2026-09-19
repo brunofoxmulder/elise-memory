@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.sqlite3
 .venv/
+*.egg-info/
 
 # Never commit Google/service-account credentials
 google-service-account.json
