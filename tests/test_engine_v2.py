@@ -2328,7 +2328,7 @@ actions:
     assert len(results) == 1
     assert results[0]["automation_entity_id"] == "automation.via_script"
     assert results[0]["target_entity_id"] == "light.proved"
-    assert results[0]["effect"] == "on"
+    assert results[0]["effect"] == "turn_on"
     assert results[0]["action_detail"]["via_operational_script"] == "script.allume_lampe_prouvee"
 
 
