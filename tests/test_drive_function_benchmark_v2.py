@@ -519,3 +519,20 @@ def test_drive_bathroom_light_is_motion_driven_and_has_no_unlock_trigger():
         "quand la porte d'entrée se déverrouille", ENTITIES, reconciliation, graph
     )
     assert not any(x["target"] == "light.sdb" for x in unlock)
+
+
+def test_drive_climate_window_rule_answers_explicit_power_off_question():
+    reconciliation, graph = _engine()
+    result = retrieve_automation_chains(
+        "qu'est-ce qui éteint la clim salon",
+        ENTITIES,
+        reconciliation,
+        graph,
+    )
+    item = next(
+        x for x in result
+        if x["automation_entity_id"] == "automation.clim_fenetre"
+    )
+    assert item["target_entity_id"] == "climate.salon"
+    assert item["effect"] == "turn_off"
+    assert item["action_detail"]["data"]["hvac_mode"] == "off"
