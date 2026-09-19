@@ -1700,6 +1700,48 @@ def build_operational_graph(
 
 
 
+def extend_graph_with_operational_scripts(
+    edges: Iterable[GraphEdge],
+    scripts: Iterable[OperationalScript],
+) -> list[GraphEdge]:
+    """Expand proved script calls; documentary script catalogs are never accepted here."""
+    out = list(edges)
+    scripts_by_service = {item.service: item for item in scripts}
+    calls = [edge for edge in out if edge.predicate in {"CALLS_SCRIPT", "CALLS_PYSCRIPT"}]
+    for call in calls:
+        service = call.object.removeprefix("service:")
+        script = scripts_by_service.get(service)
+        if not script:
+            continue
+        configs = parse_automation_yaml(script.production)
+        script_node = f"operational_script:{service}"
+        out.append(
+            GraphEdge(
+                call.subject,
+                "CALLS_PROVED_SCRIPT",
+                script_node,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(service=service, proof_source=script.source),
+            )
+        )
+        for config in configs:
+            actions = config.get("actions", config.get("action")) if isinstance(config, dict) else None
+            script_edges: list[GraphEdge] = []
+            _walk_actions(actions, script_node, script_edges)
+            for edge in script_edges:
+                detail = _edge_detail(edge)
+                out.append(
+                    GraphEdge(
+                        edge.subject,
+                        edge.predicate,
+                        edge.object,
+                        edge.source,
+                        _detail(**detail, proof_source=script.source, called_service=service),
+                    )
+                )
+    return list(dict.fromkeys(out))
+
+
 def audit_operational_model(
     entities: Iterable[EntityRecord],
     docs: Iterable[AutomationDoc],
