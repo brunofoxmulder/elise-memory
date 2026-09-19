@@ -1541,6 +1541,38 @@ def extract_automation_edges(automation: ReconciledAutomation) -> list[GraphEdge
     return list(dict.fromkeys(edges))
 
 
+def registry_bindings_from_entries(
+    entries: Iterable[dict[str, Any]],
+    entities: Iterable[EntityRecord],
+    *,
+    source: str = "ha_entity_registry_readonly",
+) -> list[RegistryBinding]:
+    """Build exact opaque-id bindings from a read-only HA entity registry dump.
+
+    Home Assistant full entity registry rows expose both the registry entry id
+    and the public entity_id. Only exact current identities are accepted.
+    """
+    current_ids = {entity.entity_id for entity in entities}
+    out: list[RegistryBinding] = []
+    seen: dict[str, str] = {}
+    for entry in entries:
+        raw = str(entry.get("id") or "").strip()
+        entity_id = str(entry.get("entity_id") or "").strip()
+        if not raw or not entity_id:
+            continue
+        if not _OPAQUE_ENTITY_REF_RE.fullmatch(raw):
+            continue
+        if entity_id not in current_ids:
+            continue
+        previous = seen.get(raw)
+        if previous and previous != entity_id:
+            raise ValueError(f"conflicting_entity_registry_id:{raw}")
+        seen[raw] = entity_id
+        out.append(RegistryBinding(raw, entity_id, source))
+    out.sort(key=lambda item: (item.registry_ref, item.entity_id))
+    return out
+
+
 def resolve_registry_edges(
     edges: Iterable[GraphEdge],
     entities: Iterable[EntityRecord],
