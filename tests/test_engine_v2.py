@@ -13,6 +13,7 @@ from elise_memory.engine_v2 import (
     FactType,
     SourceFact,
     SourceKind,
+    audit_operational_model,
     build_operational_graph,
     business_context_for_entity,
     choose_preferred_fact,
@@ -1842,3 +1843,91 @@ def test_documentary_layers_cannot_create_operational_answer():
     assert result["operational_answer_available"] is False
     assert result["operational"]["mode"] == "unresolved"
     assert result["layers"]["production"] == []
+
+
+
+def test_operational_audit_counts_current_reconciled_and_unresolved_layers():
+    entities = _entities() + [
+        EntityRecord("automation.opaque_audit", "automation", "Opaque audit", "on"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Opaque audit",
+            """
+alias: Opaque audit
+triggers:
+  - trigger: device
+    device_id: 11111111111111111111111111111111
+    entity_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    domain: binary_sensor
+    type: opened
+actions:
+  - type: turn_on
+    device_id: 22222222222222222222222222222222
+    entity_id: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    domain: switch
+""",
+            "Validated",
+            70,
+        )
+    ]
+    audit = audit_operational_model(entities, docs)
+    assert audit.current_automations == 7
+    assert audit.current_active == 6
+    assert audit.current_disabled == 1
+    assert audit.matched_active == 6
+    assert audit.matched_disabled == 1
+    assert audit.documented_only == 1
+    assert audit.current_without_document == 0
+    assert audit.parse_errors == ()
+    assert "registry_ref:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in audit.unresolved_registry_refs
+    assert "registry_ref:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" in audit.unresolved_registry_refs
+    assert audit.predicate_counts["TRIGGERS"] > 0
+    assert audit.predicate_counts["ACTS_ON"] > 0
+
+
+def test_operational_audit_isolates_one_bad_yaml_instead_of_hiding_whole_corpus():
+    entities = _entities() + [
+        EntityRecord("automation.broken_yaml", "automation", "Broken yaml", "on"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Broken yaml",
+            "alias: Broken yaml\nactions: [ this is : not valid",
+            "Validated",
+            71,
+        )
+    ]
+    audit = audit_operational_model(entities, docs)
+    assert audit.matched_active == 6
+    assert audit.parsed_active == 5
+    assert len(audit.parse_errors) == 1
+    assert audit.parse_errors[0]["automation_entity_id"] == "automation.broken_yaml"
+
+
+def test_operational_audit_flags_parsed_automation_with_no_effect():
+    entities = _entities() + [
+        EntityRecord("automation.guard_only", "automation", "Guard only", "on"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Guard only",
+            """
+alias: Guard only
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: switch.awake
+    state: "on"
+actions: []
+""",
+            "Validated",
+            72,
+        )
+    ]
+    audit = audit_operational_model(entities, docs)
+    assert "automation.guard_only" in audit.active_without_effect_edge
+    assert "automation.guard_only" not in audit.active_without_trigger_edge
