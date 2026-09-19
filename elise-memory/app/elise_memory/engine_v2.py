@@ -184,7 +184,7 @@ class ReconciliationResult:
     current_without_document: tuple[EntityRecord, ...]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True)\nclass OperationalScript:\n    """Executable script/Pyscript body from an explicitly trusted operational source."""\n\n    service: str\n    production: str\n    source: str\n\n\n@dataclass(frozen=True)
 class GraphEdge:
     subject: str
     predicate: str
