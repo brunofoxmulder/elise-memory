@@ -932,3 +932,169 @@ mode: single
     assert item["trigger_detail"]["from"] == "on"
     assert item["trigger_detail"]["to"] == "off"
     assert not any(x["effect"] in {"open_cover", "set_cover_position"} for x in result)
+
+
+def test_drive_terrace_door_opening_is_distinct_from_night_closing():
+    entities = [
+        EntityRecord("automation.terrace_open", "automation", "Ouverture volet terrasse lors de l'ouverture de la porte fenetre", "on"),
+        EntityRecord("automation.terrace_night_close", "automation", "Fermer volet terrasse si porte-fenêtre fermée et nuit entre coucher+40min et lever soleil", "on"),
+        EntityRecord("binary_sensor.porte_fenetre_contact", "binary_sensor", "Porte-fenêtre terrasse", "off"),
+        EntityRecord("cover.volet_terrasse_2", "cover", "Volet terrasse", "closed"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Ouverture volet terrasse lors de l'ouverture de la porte fenetre",
+            """
+alias: Ouverture volet terrasse lors de l'ouverture de la porte fenetre
+triggers:
+  - type: opened
+    device_id: f545c717df97e81c69c8428f548ff253
+    entity_id: 1a4de6d440f46c93928edd5ccab04c4d
+    domain: binary_sensor
+    trigger: device
+conditions: []
+actions:
+  - action: cover.set_cover_position
+    target:
+      entity_id: cover.volet_terrasse_2
+    data:
+      position: 100
+mode: single
+""",
+            "Installée",
+            8,
+        ),
+        AutomationDoc(
+            "Fermer volet terrasse si porte-fenêtre fermée et nuit entre coucher+40min et lever soleil",
+            """
+alias: Fermer volet terrasse si porte-fenêtre fermée et nuit entre coucher+40min et lever soleil
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.porte_fenetre_contact
+    from: "on"
+    to: "off"
+conditions:
+  - condition: sun
+    after: sunset
+    after_offset: "00:40:00"
+    before: sunrise
+  - condition: numeric_state
+    entity_id: cover.volet_terrasse_2
+    attribute: current_position
+    above: 2
+actions:
+  - action: cover.close_cover
+    target:
+      entity_id: cover.volet_terrasse_2
+mode: single
+""",
+            "Installée",
+            3,
+        ),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    # The open path is opaque in Drive and must remain unresolved until an exact
+    # read-only registry binding is supplied.
+    open_unresolved = retrieve_triggered_chains(
+        "quand la porte-fenêtre terrasse s'ouvre", entities, reconciliation, graph
+    )
+    assert not any(x["automation_entity_id"] == "automation.terrace_open" for x in open_unresolved)
+
+    resolved = resolve_registry_edges(
+        graph,
+        entities,
+        [
+            RegistryBinding(
+                "1a4de6d440f46c93928edd5ccab04c4d",
+                "binary_sensor.porte_fenetre_contact",
+                "ha_entity_registry_readonly",
+            )
+        ],
+    )
+    opened = retrieve_triggered_chains(
+        "quand la porte-fenêtre terrasse s'ouvre", entities, reconciliation, resolved
+    )
+    opened_item = next(x for x in opened if x["automation_entity_id"] == "automation.terrace_open")
+    assert opened_item["target"] == "cover.volet_terrasse_2"
+    assert opened_item["effect"] == "set_cover_position"
+    assert opened_item["action_detail"]["data"]["position"] == 100
+
+    closed = retrieve_triggered_chains(
+        "quand la porte-fenêtre terrasse se ferme", entities, reconciliation, resolved
+    )
+    close_item = next(x for x in closed if x["automation_entity_id"] == "automation.terrace_night_close")
+    assert close_item["effect"] == "close_cover"
+    assert close_item["trigger_detail"]["from"] == "on"
+    assert close_item["trigger_detail"]["to"] == "off"
+    assert close_item["target"] == "cover.volet_terrasse_2"
+
+
+def test_drive_terrace_weather_guards_are_not_promoted_to_triggers():
+    entities = [
+        EntityRecord("automation.terrace_weather", "automation", "Gestion volet terrasse selon la météo", "on"),
+        EntityRecord("sensor.temperature_exterieure_fiable", "sensor", "Température extérieure fiable", "20"),
+        EntityRecord("binary_sensor.porte_fenetre_contact", "binary_sensor", "Porte-fenêtre terrasse", "off"),
+        EntityRecord("cover.volet_terrasse_2", "cover", "Volet terrasse", "open"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Gestion volet terrasse selon la météo",
+            """
+alias: Gestion volet terrasse selon la météo
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.temperature_exterieure_fiable
+    below: 3
+    id: froid
+  - trigger: numeric_state
+    entity_id: sensor.temperature_exterieure_fiable
+    above: 28
+    id: chaud
+conditions:
+  - condition: state
+    entity_id: binary_sensor.porte_fenetre_contact
+    state: "off"
+  - condition: numeric_state
+    entity_id: cover.volet_terrasse_2
+    attribute: current_position
+    above: 2
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: froid
+        sequence:
+          - action: cover.close_cover
+            target:
+              entity_id: cover.volet_terrasse_2
+      - conditions:
+          - condition: trigger
+            id: chaud
+        sequence:
+          - action: cover.close_cover
+            target:
+              entity_id: cover.volet_terrasse_2
+mode: single
+""",
+            "Installée",
+            6,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    behavior = retrieve_automation_behavior(
+        "Gestion volet terrasse selon la météo", reconciliation, graph
+    )[0]
+    assert {x["subject"] for x in behavior["triggers"]} == {"sensor.temperature_exterieure_fiable"}
+    assert {x["subject"] for x in behavior["guards"]} == {
+        "binary_sensor.porte_fenetre_contact",
+        "cover.volet_terrasse_2",
+    }
+    # Merely opening/closing the door-window is a guard change here, not a
+    # causal trigger for the weather automation.
+    door = retrieve_triggered_chains(
+        "quand la porte-fenêtre terrasse se ferme", entities, reconciliation, graph
+    )
+    assert not any(x["automation_entity_id"] == "automation.terrace_weather" for x in door)
