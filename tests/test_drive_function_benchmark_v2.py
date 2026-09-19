@@ -831,3 +831,104 @@ mode: single
         x["predicate"] == "DELAY_BARRIER" and "hours" in x["object"]
         for x in off["barriers"]
     )
+
+
+def test_drive_salon_window_opening_requires_exact_opaque_trigger_identity():
+    entities = [
+        EntityRecord("automation.salon_window_open", "automation", "Ouverture volet salon par ouverture de la fenetre", "on"),
+        EntityRecord("binary_sensor.fenetre_porte_contact", "binary_sensor", "Fenêtre salon", "off"),
+        EntityRecord("cover.volet_salon_2", "cover", "Volet salon", "closed"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Ouverture volet salon par ouverture de la fenetre",
+            """
+alias: Ouverture volet salon par ouverture de la fenetre
+triggers:
+  - type: opened
+    device_id: 772d73c850b0f8ccebc9955a857c0947
+    entity_id: bf61804c3ebdbc2f9832e66344ec19d8
+    domain: binary_sensor
+    trigger: device
+conditions: []
+actions:
+  - action: cover.set_cover_position
+    target:
+      entity_id: cover.volet_salon_2
+    data:
+      position: 100
+mode: single
+""",
+            "Installée",
+            7,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    # Drive's production trigger is opaque. The visible friendly window entity
+    # is not enough evidence to bind it.
+    assert retrieve_triggered_chains(
+        "quand la fenêtre salon s'ouvre", entities, reconciliation, graph
+    ) == []
+    resolved = resolve_registry_edges(
+        graph,
+        entities,
+        [
+            RegistryBinding(
+                "bf61804c3ebdbc2f9832e66344ec19d8",
+                "binary_sensor.fenetre_porte_contact",
+                "ha_entity_registry_readonly",
+            )
+        ],
+    )
+    result = retrieve_triggered_chains(
+        "quand la fenêtre salon s'ouvre", entities, reconciliation, resolved
+    )
+    item = next(x for x in result if x["automation_entity_id"] == "automation.salon_window_open")
+    assert item["target"] == "cover.volet_salon_2"
+    assert item["effect"] == "set_cover_position"
+    assert item["action_detail"]["data"]["position"] == 100
+
+
+def test_drive_salon_window_closing_at_night_is_close_not_open():
+    entities = [
+        EntityRecord("automation.salon_night_close", "automation", "Fermer volet salon si fenêtre fermée et nuit entre coucher+40min et lever soleil", "on"),
+        EntityRecord("binary_sensor.fenetre_porte_contact", "binary_sensor", "Fenêtre salon", "off"),
+        EntityRecord("cover.volet_salon_2", "cover", "Volet salon", "open"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Fermer volet salon si fenêtre fermée et nuit entre coucher+40min et lever soleil",
+            """
+alias: Fermer volet salon si fenêtre fermée et nuit entre coucher+40min et lever soleil
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.fenetre_porte_contact
+    from: "on"
+    to: "off"
+conditions:
+  - condition: sun
+    after: sunset
+    after_offset: "00:40:00"
+    before: sunrise
+actions:
+  - action: cover.close_cover
+    target:
+      entity_id: cover.volet_salon_2
+mode: single
+""",
+            "Installée",
+            2,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_triggered_chains(
+        "quand la fenêtre salon se ferme", entities, reconciliation, graph
+    )
+    item = next(x for x in result if x["automation_entity_id"] == "automation.salon_night_close")
+    assert item["target"] == "cover.volet_salon_2"
+    assert item["effect"] == "close_cover"
+    assert item["trigger_detail"]["from"] == "on"
+    assert item["trigger_detail"]["to"] == "off"
+    assert not any(x["effect"] in {"open_cover", "set_cover_position"} for x in result)
