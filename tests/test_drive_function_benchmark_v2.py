@@ -9,7 +9,7 @@ from elise_memory.engine_v2 import (
     retrieve_automation_behavior,
     retrieve_automation_chains,
     retrieve_triggered_chains,
-    resolve_registry_edges,
+    resolve_registry_edges,\n    resolve_entities,
 )
 
 
@@ -827,10 +827,7 @@ mode: single
     assert any(x["subject"] == "binary_sensor.brosse_utilisee" and x["predicate"] == "TRIGGERS" for x in on["context"])
     assert on["barriers"] == []
     assert off["effect"] == "turn_off"
-    assert any(
-        x["predicate"] == "DELAY_BARRIER" and "hours" in x["object"]
-        for x in off["barriers"]
-    )
+    assert any(x["detail"].get("kind") == "delay" and x["detail"].get("duration", {}).get("hours") == 1 for x in off["barriers"])
 
 
 def test_drive_salon_window_opening_requires_exact_opaque_trigger_identity():
@@ -1160,18 +1157,14 @@ mode: single
     )
     on_item = next(x for x in on if x["automation_entity_id"] == "automation.tineco_on")
     assert on_item["effect"] == "turn_on"
-    assert on_item["trigger"] == "binary_sensor.tineco_online"
-    assert {x["subject"] for x in on_item["guards"]} == {"sensor.rte_tempo_couleur_actuelle"}
-    assert on_item["trigger"] != "sensor.rte_tempo_couleur_actuelle"
+    on_triggers = [x for x in on_item["context"] if x["predicate"] == "TRIGGERS"]\n    on_guards = [x for x in on_item["context"] if x["predicate"] == "GUARDS"]\n    assert {x["subject"] for x in on_triggers} == {"binary_sensor.tineco_online"}\n    assert {x["subject"] for x in on_guards} == {"sensor.rte_tempo_couleur_actuelle"}
 
     off = retrieve_automation_chains(
         "qu'est-ce qui éteint la prise Tineco", entities, reconciliation, graph
     )
     off_item = next(x for x in off if x["automation_entity_id"] == "automation.tineco_off")
     assert off_item["effect"] == "turn_off"
-    assert off_item["trigger"] == "sensor.tineco_battery"
-    assert off_item["trigger_detail"]["above"] == 99.9
-    assert off_item["trigger"] != "binary_sensor.tineco_online"
+    off_triggers = [x for x in off_item["context"] if x["predicate"] == "TRIGGERS"]\n    assert {x["subject"] for x in off_triggers} == {"sensor.tineco_battery"}\n    assert off_triggers[0]["detail"]["above"] == 99.9
 
 
 def test_drive_tineco_battery_query_prefers_precise_sensor_over_generic_switch():
@@ -1180,6 +1173,4 @@ def test_drive_tineco_battery_query_prefers_precise_sensor_over_generic_switch()
         EntityRecord("switch.0xa4c1387da600c253", "switch", "Tineco", "off"),
         EntityRecord("sensor.tineco_model", "sensor", "Tineco Device Tineco Model", "S7 Pro"),
     ]
-    ranked = search_entities("batterie Tineco", entities)
-    assert ranked[0].entity_id == "sensor.tineco_battery"
-    assert ranked[0].entity_id != "switch.0xa4c1387da600c253"
+    ranked = resolve_entities("batterie Tineco", entities)\n    assert ranked[0][0].entity_id == "sensor.tineco_battery"\n    assert ranked[0][0].entity_id != "switch.0xa4c1387da600c253"
