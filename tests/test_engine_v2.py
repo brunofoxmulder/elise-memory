@@ -2359,3 +2359,80 @@ actions:
         "allume lampe proved", entities, reconciliation, base
     )
     assert results == []
+
+
+def test_retrieval_follows_uniquely_proved_pyscript_effect():
+    entities = [
+        EntityRecord("automation.via_pyscript", "automation", "Entry via pyscript", "on"),
+        EntityRecord("binary_sensor.entry_motion", "binary_sensor", "Entry motion", "off"),
+        EntityRecord("light.proved", "light", "Proved lamp", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Entry via pyscript",
+            """
+alias: Entry via pyscript
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: pyscript.allume_lampe_prouvee
+""",
+            "Validated",
+            202,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    base = build_operational_graph(reconciliation)
+    expanded = extend_graph_with_operational_scripts(
+        base,
+        [
+            OperationalScript(
+                "pyscript.allume_lampe_prouvee",
+                """
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.proved
+""",
+                "proved_pyscript_projection",
+            )
+        ],
+    )
+    results = retrieve_automation_chains(
+        "allume lampe proved", entities, reconciliation, expanded
+    )
+    assert len(results) == 1
+    assert results[0]["automation_entity_id"] == "automation.via_pyscript"
+    assert results[0]["target_entity_id"] == "light.proved"
+    assert results[0]["action_detail"]["via_operational_script"] == "pyscript.allume_lampe_prouvee"
+    assert results[0]["action_detail"]["proof_source"] == "proved_pyscript_projection"
+
+
+def test_documentary_pyscript_catalog_cannot_create_retrievable_effect():
+    entities = [
+        EntityRecord("automation.via_pyscript", "automation", "Entry via pyscript", "on"),
+        EntityRecord("light.proved", "light", "Proved lamp", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Entry via pyscript",
+            """
+alias: Entry via pyscript
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: pyscript.allume_lampe_prouvee
+""",
+            "Validated",
+            203,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    base = build_operational_graph(reconciliation)
+    assert retrieve_automation_chains(
+        "allume lampe proved", entities, reconciliation, base
+    ) == []
