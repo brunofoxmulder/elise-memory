@@ -276,7 +276,7 @@ def test_open_shutter_query_prefers_open_effect():
         "what opens the lounge shutter", entities, reconciliation, graph
     )
     assert result[0]["automation_entity_id"] == "automation.shutter_open"
-    assert result[0]["effect"] == "set_position"
+    assert result[0]["effect"] == "open"
 
 
 def test_close_shutter_query_prefers_close_effect():
