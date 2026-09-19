@@ -168,6 +168,28 @@ class GraphEdge:
     detail: str | None = None
 
 
+@dataclass(frozen=True)
+class BusinessFunctionDoc:
+    function: str
+    reference: str
+    object_type: str | None = None
+    rule: str | None = None
+    source_official: str | None = None
+    last_validation: str | None = None
+
+
+@dataclass(frozen=True)
+class ReconciledBusinessFunction:
+    function: str
+    reference: str
+    object_type: str | None
+    rule: str | None
+    source_official: str | None
+    last_validation: str | None
+    binding_entity_id: str | None
+    binding_status: str
+
+
 def normalize_text(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
     return "".join(
@@ -260,6 +282,105 @@ def ha_entities_from_rows(header: list[object], rows: list[list[object]]) -> lis
             )
         )
     return out
+
+
+def business_functions_from_rows(
+    header: list[object],
+    rows: list[list[object]],
+) -> list[BusinessFunctionDoc]:
+    names = [str(x or "").strip() for x in header]
+    required = {
+        "Fonction métier",
+        "Entité Home Assistant actuelle",
+        "Type",
+        "Source officielle",
+        "État attendu / règle",
+    }
+    if not required.issubset(set(names)):
+        missing = sorted(required - set(names))
+        raise ValueError("business_reference_missing_columns:" + ",".join(missing))
+    out: list[BusinessFunctionDoc] = []
+    for raw in rows:
+        padded = list(raw) + [""] * (len(names) - len(raw))
+        row = dict(zip(names, padded))
+        function = str(row["Fonction métier"] or "").strip()
+        if not function:
+            continue
+        out.append(
+            BusinessFunctionDoc(
+                function=function,
+                reference=str(row["Entité Home Assistant actuelle"] or "").strip(),
+                object_type=str(row["Type"] or "").strip() or None,
+                rule=str(row["État attendu / règle"] or "").strip() or None,
+                source_official=str(row["Source officielle"] or "").strip() or None,
+                last_validation=str(row.get("Dernière validation") or "").strip() or None,
+            )
+        )
+    return out
+
+
+def reconcile_business_functions(
+    entities: Iterable[EntityRecord],
+    docs: Iterable[BusinessFunctionDoc],
+) -> list[ReconciledBusinessFunction]:
+    """Keep stable métier meaning while separately qualifying the current binding."""
+    entity_list = list(entities)
+    by_id = {entity.entity_id: entity for entity in entity_list}
+    by_name: dict[str, list[EntityRecord]] = {}
+    for entity in entity_list:
+        by_name.setdefault(normalize_text(entity.name), []).append(entity)
+
+    out: list[ReconciledBusinessFunction] = []
+    for doc in docs:
+        ref = doc.reference.strip()
+        binding_entity_id: str | None = None
+        binding_status = "semantic_only"
+
+        if _ENTITY_ID_RE.match(ref):
+            if ref in by_id:
+                binding_entity_id = ref
+                binding_status = "current_entity"
+            else:
+                binding_status = "stale_entity"
+        else:
+            alias_match = re.match(r"^alias\s+ha\s*:\s*(.+)$", normalize_text(ref))
+            if alias_match:
+                alias = alias_match.group(1).strip()
+                hits = by_name.get(alias, [])
+                if len(hits) == 1:
+                    binding_entity_id = hits[0].entity_id
+                    binding_status = "current_alias"
+                elif len(hits) > 1:
+                    binding_status = "ambiguous_alias"
+                else:
+                    binding_status = "stale_alias"
+
+        out.append(
+            ReconciledBusinessFunction(
+                function=doc.function,
+                reference=doc.reference,
+                object_type=doc.object_type,
+                rule=doc.rule,
+                source_official=doc.source_official,
+                last_validation=doc.last_validation,
+                binding_entity_id=binding_entity_id,
+                binding_status=binding_status,
+            )
+        )
+    return out
+
+
+def business_context_for_entity(
+    entity_id: str,
+    business_functions: Iterable[ReconciledBusinessFunction],
+) -> list[ReconciledBusinessFunction]:
+    """Return métier rows currently bound to this entity; stale bindings stay out."""
+    return [
+        item
+        for item in business_functions
+        if item.binding_entity_id == entity_id
+        and item.binding_status in {"current_entity", "current_alias"}
+    ]
 
 
 def automation_docs_from_rows(header: list[object], rows: list[list[object]]) -> list[AutomationDoc]:
