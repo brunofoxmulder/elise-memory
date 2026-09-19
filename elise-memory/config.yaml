@@ -1,6 +1,6 @@
 name: Élise Memory
 description: Mémoire locale déterministe pour Home Assistant
-version: "0.1.0-dev.12"
+version: "0.1.0-dev.13"
 slug: elise_memory
 init: false
 hassio_api: true
