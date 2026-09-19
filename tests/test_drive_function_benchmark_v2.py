@@ -1356,3 +1356,62 @@ mode: single
     full_ids = {x["automation_entity_id"] for x in full}
     assert "automation.charge_s23_hc" in full_ids
     assert "automation.stop_hc_charges" not in full_ids
+
+
+def test_drive_salon_sunset_close_triggers_remain_distinct_and_shadow_is_not_causal():
+    entities = [
+        EntityRecord("automation.salon_close_45", "automation", "Fermer volet salon coucher plus 45 minutes", "on"),
+        EntityRecord("automation.salon_close_60", "automation", "Fermer volet salon coucher plus 1 heure", "on"),
+        EntityRecord("automation.shadow_volets", "automation", "V2 Shadow - Journal mouvements volets", "on"),
+        EntityRecord("cover.volet_salon_2", "cover", "Volet salon", "open"),
+    ]
+    docs = [
+        AutomationDoc("Fermer volet salon coucher plus 45 minutes", """
+alias: Fermer volet salon coucher plus 45 minutes
+triggers:
+  - trigger: sun
+    event: sunset
+    offset: "00:45:00"
+actions:
+  - action: cover.close_cover
+    target: {entity_id: cover.volet_salon_2}
+mode: single
+""", "Validée / production", 101),
+        AutomationDoc("Fermer volet salon coucher plus 1 heure", """
+alias: Fermer volet salon coucher plus 1 heure
+triggers:
+  - trigger: sun
+    event: sunset
+    offset: "01:00:00"
+actions:
+  - action: cover.close_cover
+    target: {entity_id: cover.volet_salon_2}
+mode: single
+""", "Validée / production", 102),
+        AutomationDoc("V2 Shadow - Journal mouvements volets", """
+alias: V2 Shadow - Journal mouvements volets
+triggers:
+  - trigger: state
+    entity_id: cover.volet_salon_2
+    attribute: current_position
+actions:
+  - action: pyscript.journal_volet
+    data:
+      entity_id: cover.volet_salon_2
+mode: queued
+""", "Shadow", 185),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    closing = retrieve_automation_chains(
+        "qu'est-ce qui ferme le volet salon", entities, reconciliation, graph
+    )
+    ids = {x["automation_entity_id"] for x in closing}
+    assert ids == {"automation.salon_close_45", "automation.salon_close_60"}
+    assert "automation.shadow_volets" not in ids
+
+    shadow = retrieve_automation_behavior("V2 Shadow - Journal mouvements volets", reconciliation, graph)[0]
+    assert shadow["actions"] == []
+    assert any(x["predicate"] == "CALLS_PYSCRIPT" for x in shadow["calls"])
+    assert all(x["object"] != "cover.volet_salon_2" for x in shadow["actions"])
