@@ -133,3 +133,51 @@ C'est une différence essentielle avec une recherche sémantique : une bonne res
 Le prototype `engine_v2.py` et ses tests sont volontairement non raccordés à `/v1/knowledge/search`. Le but est de stabiliser le contrat du moteur et les régressions avant de toucher au chemin utilisé par Élise Live.
 
 Aucun redémarrage Home Assistant n'est requis pour cette phase.
+
+
+## Couverture réelle du YAML Drive — audit du 19/09/2026
+
+L'audit a été refait sur les 106 automatisations dont la Production est réconciliée avec une automation actuellement ON dans le Référentiel HA.
+
+Constructions observées :
+- 26 automations utilisent `choose` ;
+- 6 utilisent `wait_for_trigger` et 1 utilise `wait_template` ;
+- 15 utilisent des `delay` ;
+- 3 utilisent `if/then/else` ;
+- 1 utilise `repeat` ;
+- 23 contiennent au moins une condition template ;
+- 11 contiennent un trigger device ;
+- 1 contient une condition temporelle explicite ;
+- 1 contient une action `stop`.
+
+Le moteur V2 doit donc préserver non seulement les cibles, mais aussi l'ordre local, la branche, les guards et les barrières temporelles. Les guards d'une branche `choose` ne doivent jamais être attribués aux actions d'une autre branche, et un wait situé après une action ne doit jamais être recyclé comme condition de cette action.
+
+### Références internes Home Assistant
+
+L'audit montre aussi que les actions/trigger de type device restent un point dur :
+- 11 occurrences de trigger device, dont 5 utilisent un identifiant d'entité opaque de registre ;
+- 18 actions device observées, toutes avec un identifiant d'entité opaque dans le YAML exporté.
+
+Ces références sont conservées telles quelles dans le graphe. Elles ne sont résolues vers un `entity_id` courant que lorsqu'un binding explicite et prouvé est fourni. Une ressemblance de nom, un device_id voisin ou une ligne documentaire ne suffit jamais.
+
+### Cas désormais explicitement couverts par tests
+
+La suite de régression couvre maintenant :
+- séparation des sources courantes, documentaires et historiques ;
+- réconciliation fail-closed des automations ;
+- questions cible → automations actives ;
+- questions source/trigger → automations → effets ;
+- plusieurs automations légitimes sur une même cible ;
+- ouverture/fermeture distinctes sur un même volet ;
+- `choose`, `if/then/else`, `wait_for_trigger`, `wait_template`, délais et stop ;
+- portée locale des guards de branche ;
+- ordre des waits par rapport aux actions ;
+- conditions temporelles ;
+- conditions template, y compris les templates dynamiques sans entity_id statique ;
+- références `states.sensor.xxx` en syntaxe pointée ;
+- steps désactivés via `enabled: false` ;
+- appels script, Pyscript, automation et services sans cible explicite ;
+- résolution d'objet en français pour lampes, volets, serrures et charges ;
+- résolution explicite des références de registre sans guessing.
+
+Cette couverture reste une validation de code. Elle ne remplace ni la validation terrain Home Assistant, ni la résolution des références opaques par le registre HA réel.
