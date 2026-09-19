@@ -1109,3 +1109,217 @@ def test_registry_binding_rejects_conflicting_identity_claims():
                 RegistryBinding("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "switch.two", "source_b"),
             ],
         )
+
+
+
+def test_disabled_trigger_condition_and_action_are_ignored():
+    entities = _entities() + [
+        EntityRecord("automation.disabled_parts", "automation", "Disabled parts", "on"),
+        EntityRecord("switch.blocker", "switch", "Blocker", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Disabled parts",
+            """
+alias: Disabled parts
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+    enabled: false
+  - trigger: state
+    entity_id: binary_sensor.bathroom_motion
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: switch.blocker
+    state: "on"
+    enabled: false
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+    enabled: false
+  - action: light.turn_on
+    target:
+      entity_id: light.bathroom
+""",
+            "Validated",
+            60,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    rels = {(edge.subject, edge.predicate, edge.object) for edge in graph}
+    assert ("binary_sensor.entry_motion", "TRIGGERS", "automation.disabled_parts") not in rels
+    assert ("binary_sensor.bathroom_motion", "TRIGGERS", "automation.disabled_parts") in rels
+    assert ("switch.blocker", "GUARDS", "automation.disabled_parts") not in rels
+    assert ("automation.disabled_parts", "ACTS_ON", "light.entry") not in rels
+    assert ("automation.disabled_parts", "ACTS_ON", "light.bathroom") in rels
+
+
+def test_time_condition_is_preserved_as_guard():
+    entities = _entities() + [
+        EntityRecord("automation.weekly", "automation", "Weekly report", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Weekly report",
+            """
+alias: Weekly report
+triggers:
+  - trigger: time
+    at: "00:35:00"
+conditions:
+  - condition: time
+    weekday:
+      - mon
+actions:
+  - action: pyscript.weekly_report
+""",
+            "Validated",
+            61,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    edge = next(
+        edge for edge in graph
+        if edge.subject == "time_window"
+        and edge.predicate == "GUARDS"
+        and edge.object == "automation.weekly"
+    )
+    detail = json.loads(edge.detail)
+    assert detail["weekday"] == ["mon"]
+
+
+def test_wait_timeout_is_preserved_before_following_action():
+    entities = _entities() + [
+        EntityRecord("automation.charge_wait", "automation", "Charge wait", "on"),
+        EntityRecord("switch.charger", "switch", "Phone charger", "off"),
+        EntityRecord("sensor.power", "sensor", "Charger power", "5"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Charge wait",
+            """
+alias: Charge wait
+triggers:
+  - trigger: time
+    at: "01:00:00"
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.charger
+  - wait_for_trigger:
+      - trigger: numeric_state
+        entity_id: sensor.power
+        below: 1
+        for: "00:05:00"
+    timeout: "04:00:00"
+    continue_on_timeout: true
+  - action: switch.turn_off
+    target:
+      entity_id: switch.charger
+""",
+            "Validated",
+            62,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_automation_chains(
+        "what turns off the phone charger", entities, reconciliation, graph
+    )
+    item = next(x for x in result if x["automation_entity_id"] == "automation.charge_wait")
+    assert any(
+        barrier["detail"].get("kind") == "wait_for_trigger"
+        and barrier["detail"].get("timeout") == "04:00:00"
+        and barrier["detail"].get("continue_on_timeout") is True
+        for barrier in item["barriers"]
+    )
+    assert any(
+        ctx["predicate"] == "WAITS_FOR" and ctx["subject"] == "sensor.power"
+        for ctx in item["context"]
+    )
+
+
+def test_wait_template_timeout_is_preserved():
+    entities = _entities() + [
+        EntityRecord("automation.secure", "automation", "Secure house", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Secure house",
+            """
+alias: Secure house
+triggers:
+  - trigger: state
+    entity_id: switch.awake
+    to: "off"
+actions:
+  - wait_template: "{{ is_state('lock.front_door', 'locked') }}"
+    timeout:
+      seconds: 20
+    continue_on_timeout: true
+  - action: light.turn_off
+    target:
+      entity_id: light.entry
+""",
+            "Validated",
+            63,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_automation_chains(
+        "what turns off the entry lamp", entities, reconciliation, graph
+    )
+    item = next(x for x in result if x["automation_entity_id"] == "automation.secure")
+    assert any(
+        barrier["detail"].get("kind") == "wait_template"
+        and barrier["detail"].get("timeout") == {"seconds": 20}
+        and barrier["detail"].get("continue_on_timeout") is True
+        for barrier in item["barriers"]
+    )
+
+
+def test_stop_makes_later_actions_in_same_sequence_unreachable():
+    entities = _entities() + [
+        EntityRecord("automation.stop_test", "automation", "Stop test", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Stop test",
+            """
+alias: Stop test
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+  - stop: "do not continue"
+  - action: light.turn_on
+    target:
+      entity_id: light.bathroom
+""",
+            "Validated",
+            64,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "automation.stop_test"
+        and edge.predicate == "TERMINATES"
+        for edge in graph
+    )
+    assert not any(
+        edge.subject == "automation.stop_test"
+        and edge.predicate == "ACTS_ON"
+        and edge.object == "light.bathroom"
+        for edge in graph
+    )
