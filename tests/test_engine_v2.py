@@ -2,6 +2,7 @@ import json
 
 from elise_memory.engine_v2 import (
     AutomationDoc,
+    assemble_evidence_context,
     BusinessFunctionDoc,
     EntityRecord,
     ObjectDependencyDoc,
@@ -1739,3 +1740,103 @@ actions:
     assert {x["automation_entity_id"] for x in result["results"]} == {
         "automation.open_volet", "automation.close_volet"
     }
+
+
+
+def test_evidence_assembly_keeps_production_as_operational_core():
+    entities = [
+        EntityRecord("automation.lamp", "automation", "Allumer lampe entrée", "on"),
+        EntityRecord("light.entry", "light", "Lampe entrée", "off"),
+        EntityRecord("binary_sensor.motion", "binary_sensor", "Mouvement entrée", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Allumer lampe entrée",
+            """
+alias: Allumer lampe entrée
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.motion
+    to: "on"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+""",
+            "Validée",
+            100,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    production = build_operational_graph(reconciliation)
+    deps = [
+        GraphEdge(
+            "automation.lamp", "USES", "sensor.unrelated",
+            SourceKind.OBJECTS_HA, json.dumps({"binding": "document_only"})
+        )
+    ]
+    r8 = [
+        GraphEdge(
+            "document_ref:old", "R8:mentions", "automation.lamp",
+            SourceKind.R8_RELATION, json.dumps({"role": "historical"})
+        )
+    ]
+    business = [
+        ReconciledBusinessFunction(
+            function="Éclairage entrée",
+            reference="light.entry",
+            object_type="Light",
+            rule="Éclairage sur présence",
+            source_official="Oui",
+            last_validation="2026-09-19",
+            binding_entity_id="light.entry",
+            binding_status="current_entity",
+        )
+    ]
+    result = assemble_evidence_context(
+        "qu'est-ce qui allume la lampe entrée ?",
+        entities,
+        reconciliation,
+        production,
+        dependency_edges_in=deps,
+        r8_edges_in=r8,
+        business_functions=business,
+    )
+    assert result["operational_answer_available"] is True
+    assert result["operational"]["mode"] == "target_to_automation"
+    assert result["layers"]["production"][0]["automation_entity_id"] == "automation.lamp"
+    assert result["layers"]["objects_ha"][0]["predicate"] == "USES"
+    assert result["layers"]["r8"][0]["predicate"] == "R8:mentions"
+    assert result["layers"]["metier"][0]["function"] == "Éclairage entrée"
+    assert result["precedence"][:2] == ["current_identity", "production"]
+
+
+def test_documentary_layers_cannot_create_operational_answer():
+    entities = [
+        EntityRecord("light.entry", "light", "Lampe entrée", "off"),
+    ]
+    reconciliation = reconcile_automations(entities, [])
+    production = build_operational_graph(reconciliation)
+    deps = [
+        GraphEdge(
+            "document_ref:ghost_automation", "USES", "light.entry",
+            SourceKind.OBJECTS_HA, None
+        )
+    ]
+    r8 = [
+        GraphEdge(
+            "document_ref:ghost_automation", "R8:agit_sur", "light.entry",
+            SourceKind.R8_RELATION, json.dumps({"status": "Validé"})
+        )
+    ]
+    result = assemble_evidence_context(
+        "qu'est-ce qui allume la lampe entrée ?",
+        entities,
+        reconciliation,
+        production,
+        dependency_edges_in=deps,
+        r8_edges_in=r8,
+    )
+    assert result["operational_answer_available"] is False
+    assert result["operational"]["mode"] == "unresolved"
+    assert result["layers"]["production"] == []
