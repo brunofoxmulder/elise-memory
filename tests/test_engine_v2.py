@@ -6,6 +6,7 @@ from elise_memory.engine_v2 import (
     EntityRecord,
     ObjectDependencyDoc,
     R8RelationDoc,
+    RegistryBinding,
     FactType,
     SourceFact,
     SourceKind,
@@ -18,6 +19,7 @@ from elise_memory.engine_v2 import (
     r8_edges,
     r8_relations_from_rows,
     resolve_entities,
+    resolve_registry_edges,
     retrieve_automation_chains,
     retrieve_triggered_chains,
 )
@@ -977,3 +979,133 @@ actions:
     ]
     assert any(detail.get("above") == 99 for detail in local_off)
     assert all(detail.get("below") != 95 for detail in local_off)
+
+
+
+def test_explicit_registry_binding_makes_opaque_device_action_queryable():
+    entities = _entities() + [
+        EntityRecord("automation.device_charge", "automation", "Device charge", "on"),
+        EntityRecord("switch.charge_socket", "switch", "Charge socket", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Device charge",
+            """
+alias: Device charge
+triggers:
+  - trigger: time
+    at: "01:00:00"
+actions:
+  - type: turn_on
+    device_id: 11111111111111111111111111111111
+    entity_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    domain: switch
+""",
+            "Validated",
+            60,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    unresolved = retrieve_automation_chains(
+        "what turns on the charge socket", entities, reconciliation, graph
+    )
+    assert all(item["automation_entity_id"] != "automation.device_charge" for item in unresolved)
+
+    resolved_graph = resolve_registry_edges(
+        graph,
+        entities,
+        [RegistryBinding(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "switch.charge_socket",
+            "ha_entity_registry_readonly",
+        )],
+    )
+    resolved = retrieve_automation_chains(
+        "what turns on the charge socket", entities, reconciliation, resolved_graph
+    )
+    item = next(x for x in resolved if x["automation_entity_id"] == "automation.device_charge")
+    assert item["target_entity_id"] == "switch.charge_socket"
+    assert item["action_detail"]["identity_resolution_source"] == "ha_entity_registry_readonly"
+
+
+def test_explicit_registry_binding_makes_opaque_device_trigger_traversable():
+    entities = _entities() + [
+        EntityRecord("automation.opaque_trigger", "automation", "Opaque trigger", "on"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Opaque trigger",
+            """
+alias: Opaque trigger
+triggers:
+  - trigger: device
+    device_id: 22222222222222222222222222222222
+    entity_id: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    domain: binary_sensor
+    type: opened
+actions:
+  - action: cover.open_cover
+    target:
+      entity_id: cover.lounge
+""",
+            "Validated",
+            61,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    resolved_graph = resolve_registry_edges(
+        graph,
+        entities,
+        [RegistryBinding(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "binary_sensor.window",
+            "ha_entity_registry_readonly",
+        )],
+    )
+    result = retrieve_triggered_chains(
+        "what happens when the lounge window opens",
+        entities,
+        reconciliation,
+        resolved_graph,
+    )
+    assert any(
+        item["automation_entity_id"] == "automation.opaque_trigger"
+        and item["target"] == "cover.lounge"
+        and item["effect"] == "open"
+        for item in result
+    )
+
+
+def test_registry_binding_rejects_non_current_target():
+    entities, reconciliation, graph = _engine()
+    import pytest
+    with pytest.raises(ValueError, match="registry_binding_not_current"):
+        resolve_registry_edges(
+            graph,
+            entities,
+            [RegistryBinding(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "switch.not_in_current_ha",
+                "test",
+            )],
+        )
+
+
+def test_registry_binding_rejects_conflicting_identity_claims():
+    entities = _entities() + [
+        EntityRecord("switch.one", "switch", "One", "off"),
+        EntityRecord("switch.two", "switch", "Two", "off"),
+    ]
+    _, reconciliation, graph = _engine()
+    import pytest
+    with pytest.raises(ValueError, match="conflicting_registry_binding"):
+        resolve_registry_edges(
+            graph,
+            entities,
+            [
+                RegistryBinding("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "switch.one", "source_a"),
+                RegistryBinding("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "switch.two", "source_b"),
+            ],
+        )
