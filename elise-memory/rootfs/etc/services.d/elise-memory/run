@@ -1,14 +1,31 @@
-#!/usr/bin/with-contenv bashio
-set -e
+#!/usr/bin/with-contenv sh
+set -eu
 
 CONFIG_PATH=/data/options.json
 
+read_option() {
+    python3 - "$CONFIG_PATH" "$1" <<'PY'
+import json
+import sys
+
+path, key = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as handle:
+    value = json.load(handle).get(key, "")
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif value is None:
+    print("")
+else:
+    print(value)
+PY
+}
+
 export ELISE_MEMORY_DB=/data/elise_memory.sqlite3
-export ELISE_MEMORY_SYNC_ENABLED="$(bashio::config 'sync_enabled')"
+export ELISE_MEMORY_SYNC_ENABLED="$(read_option sync_enabled)"
 export ELISE_MEMORY_GOOGLE_CREDENTIALS=/config/google-service-account.json
-export ELISE_MEMORY_SHEET_HOME_ASSISTANT_ID="$(bashio::config 'sheet_home_assistant_id')"
-export ELISE_MEMORY_SHEET_INDEX_ID="$(bashio::config 'sheet_index_id')"
-export ELISE_MEMORY_SHEET_AUTOMATIONS_ID="$(bashio::config 'sheet_automations_id')"
-export ELISE_MEMORY_SHEET_SCRIPTS_ID="$(bashio::config 'sheet_scripts_id')"
+export ELISE_MEMORY_SHEET_HOME_ASSISTANT_ID="$(read_option sheet_home_assistant_id)"
+export ELISE_MEMORY_SHEET_INDEX_ID="$(read_option sheet_index_id)"
+export ELISE_MEMORY_SHEET_AUTOMATIONS_ID="$(read_option sheet_automations_id)"
+export ELISE_MEMORY_SHEET_SCRIPTS_ID="$(read_option sheet_scripts_id)"
 
 exec elise-memory
