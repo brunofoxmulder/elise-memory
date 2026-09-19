@@ -35,6 +35,7 @@ _ACTION_WORDS = {
     "allume", "allumer", "eteint", "eteindre", "coupe", "couper",
     "ouvre", "ouvrir", "ferme", "fermer", "active", "activer",
     "desactive", "desactiver", "demarre", "demarrer",
+    "verrouille", "verrouiller", "deverrouille", "deverrouiller",
 }
 
 
@@ -1083,6 +1084,11 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
     if "condition" in node and not (isinstance(service, str) and "." in service):
         _walk_condition(node, automation_id, edges, predicate="LOCAL_GUARD")
 
+    if "if" in node:
+        _walk_condition(node.get("if"), automation_id, edges, predicate="LOCAL_GUARD")
+        _walk_actions(node.get("then"), automation_id, edges)
+        _walk_actions(node.get("else"), automation_id, edges)
+
     if "choose" in node and isinstance(node["choose"], list):
         for choice in node["choose"]:
             if not isinstance(choice, dict):
@@ -1183,7 +1189,7 @@ def resolve_entities(
         hints.add("cover")
     if {"prise", "chargeur"} & qtokens:
         hints.add("switch")
-    if {"serrure"} & qtokens:
+    if {"serrure"} & qtokens or re.search(r"\\b(?:de)?verrouill\\w*\\b", normalize_text(query)):
         hints.add("lock")
 
     scored: list[tuple[EntityRecord, int]] = []
@@ -1311,4 +1317,129 @@ def retrieve_automation_chains(
     return sorted(
         dedup.values(),
         key=lambda item: (-item["score"], item["automation_entity_id"]),
+    )[: max(1, limit)]
+
+
+
+def retrieve_triggered_chains(
+    query: str,
+    entities: Iterable[EntityRecord],
+    reconciliation: ReconciliationResult,
+    edges: Iterable[GraphEdge],
+    *,
+    limit: int = 12,
+) -> list[dict[str, Any]]:
+    """Traverse source object -> trigger -> active automation -> concrete effects.
+
+    This is the inverse operational question to retrieve_automation_chains.
+    It is deliberately strict: only a current HA entity that appears as an
+    actual TRIGGERS edge may start the traversal. Opaque registry/device
+    references are not guessed from names.
+    """
+    entity_list = list(entities)
+    candidates = resolve_entities(query, entity_list, limit=5)
+    if not candidates:
+        return []
+
+    best_object_score = candidates[0][1]
+    sources = [
+        candidate for candidate in candidates
+        if candidate[1] == best_object_score
+    ]
+    active = {
+        item.entity_id: item
+        for item in reconciliation.matched
+        if item.state == "on"
+    }
+    edge_list = list(edges)
+    results: list[dict[str, Any]] = []
+
+    for source, object_score in sources:
+        triggers = [
+            edge for edge in edge_list
+            if edge.subject == source.entity_id and edge.predicate == "TRIGGERS"
+        ]
+        for trigger in triggers:
+            automation = active.get(trigger.object)
+            if not automation:
+                continue
+
+            actions = [
+                edge for edge in edge_list
+                if edge.subject == automation.entity_id and edge.predicate == "ACTS_ON"
+            ]
+            calls = [
+                edge for edge in edge_list
+                if edge.subject == automation.entity_id
+                and edge.predicate in {
+                    "CALLS_AUTOMATION", "CALLS_SCRIPT", "CALLS_PYSCRIPT", "CALLS_SERVICE"
+                }
+            ]
+            context_edges = [
+                edge for edge in edge_list
+                if edge.object == automation.entity_id
+                and edge.predicate in {"GUARDS", "WAITS_FOR", "LOCAL_GUARD"}
+            ]
+
+            for action in actions:
+                detail = json.loads(action.detail) if action.detail else {}
+                results.append(
+                    {
+                        "score": object_score + 100,
+                        "source_entity_id": source.entity_id,
+                        "source_name": source.name,
+                        "automation_entity_id": automation.entity_id,
+                        "automation_name": automation.name,
+                        "target": action.object,
+                        "effect": detail.get("effect"),
+                        "action_detail": detail,
+                        "trigger_detail": json.loads(trigger.detail) if trigger.detail else {},
+                        "context": [
+                            {
+                                "subject": item.subject,
+                                "predicate": item.predicate,
+                                "detail": json.loads(item.detail) if item.detail else {},
+                            }
+                            for item in context_edges
+                        ],
+                    }
+                )
+
+            if not actions and calls:
+                for call in calls:
+                    results.append(
+                        {
+                            "score": object_score + 80,
+                            "source_entity_id": source.entity_id,
+                            "source_name": source.name,
+                            "automation_entity_id": automation.entity_id,
+                            "automation_name": automation.name,
+                            "target": call.object,
+                            "effect": call.predicate.lower(),
+                            "action_detail": json.loads(call.detail) if call.detail else {},
+                            "trigger_detail": json.loads(trigger.detail) if trigger.detail else {},
+                            "context": [
+                                {
+                                    "subject": item.subject,
+                                    "predicate": item.predicate,
+                                    "detail": json.loads(item.detail) if item.detail else {},
+                                }
+                                for item in context_edges
+                            ],
+                        }
+                    )
+
+    dedup: dict[tuple[str, str, str | None], dict[str, Any]] = {}
+    for result in results:
+        key = (
+            result["automation_entity_id"],
+            result["target"],
+            result["effect"],
+        )
+        previous = dedup.get(key)
+        if previous is None or result["score"] > previous["score"]:
+            dedup[key] = result
+    return sorted(
+        dedup.values(),
+        key=lambda item: (-item["score"], item["automation_entity_id"], item["target"]),
     )[: max(1, limit)]
