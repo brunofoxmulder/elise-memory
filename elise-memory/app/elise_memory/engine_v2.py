@@ -1321,7 +1321,7 @@ def resolve_entities(
         hints.add("cover")
     if {"prise", "chargeur"} & qtokens:
         hints.add("switch")
-    if {"serrure"} & qtokens or re.search(r"\\b(?:de)?verrouill\\w*\\b", normalize_text(query)):
+    if {"serrure"} & qtokens or re.search(r"\b(?:de)?verrouill\w*\b", normalize_text(query)):
         hints.add("lock")
 
     scored: list[tuple[EntityRecord, int]] = []
