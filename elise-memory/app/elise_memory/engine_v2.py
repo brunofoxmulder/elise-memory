@@ -370,7 +370,18 @@ def _template_refs(value: Any) -> set[str]:
     return set(_TEMPLATE_ENTITY_RE.findall(value))
 
 
-def _effect_for_service(service: str) -> str | None:
+def _effect_for_service(service: str, data: Any = None) -> str | None:
+    if service == "cover.set_cover_position" and isinstance(data, dict):
+        position = data.get("position")
+        try:
+            numeric = float(position)
+        except (TypeError, ValueError):
+            numeric = None
+        if numeric == 100:
+            return "open"
+        if numeric == 0:
+            return "close"
+        return "set_position"
     mapping = {
         "light.turn_on": "turn_on",
         "light.turn_off": "turn_off",
@@ -380,7 +391,6 @@ def _effect_for_service(service: str) -> str | None:
         "input_boolean.turn_off": "turn_off",
         "cover.open_cover": "open",
         "cover.close_cover": "close",
-        "cover.set_cover_position": "set_position",
         "lock.lock": "lock",
         "lock.unlock": "unlock",
         "climate.set_hvac_mode": "set_hvac_mode",
@@ -557,7 +567,11 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                         predicate,
                         _node_for_entity_ref(ref),
                         SourceKind.AUTOMATION_PRODUCTION,
-                        _detail(service=service, effect=_effect_for_service(service), data=node.get("data")),
+                        _detail(
+                            service=service,
+                            effect=_effect_for_service(service, node.get("data")),
+                            data=node.get("data"),
+                        ),
                     )
                 )
         else:
@@ -565,7 +579,7 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                 GraphEdge(
                     automation_id, "CALLS_SERVICE", f"service:{service}",
                     SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(service=service, effect=_effect_for_service(service)),
+                    _detail(service=service, effect=_effect_for_service(service, node.get("data"))),
                 )
             )
 
@@ -762,13 +776,13 @@ def retrieve_automation_chains(
                 continue
             detail = json.loads(edge.detail) if edge.detail else {}
             effect = detail.get("effect")
+            if intent and effect and effect != intent:
+                # An explicit action verb is a semantic filter, not merely a
+                # ranking hint: an OFF edge must not answer an ON question.
+                continue
             score = object_score + 100
             if intent and effect == intent:
                 score += 40
-            elif intent and effect in {"set_position"} and intent == "open":
-                score += 20
-            elif intent and effect and effect != intent:
-                score -= 25
 
             context_edges = [
                 candidate
