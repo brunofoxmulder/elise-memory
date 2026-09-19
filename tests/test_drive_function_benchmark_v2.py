@@ -716,3 +716,118 @@ mode: restart
     assert all(x["predicate"] != "WAITS_FOR" for x in on["context"])
     assert off["effect"] == "turn_off"
     assert any(x["predicate"] == "WAITS_FOR" for x in off["context"])
+
+
+def test_drive_toothbrush_device_refs_fail_closed_without_registry_binding():
+    entities = [
+        EntityRecord("automation.brosse", "automation", "Charge brosse a dents", "on"),
+        EntityRecord("switch.prise_brosse_a_dents", "switch", "Prise brosse à dents", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Charge brosse a dents",
+            """
+alias: Charge brosse a dents
+triggers:
+  - type: turned_on
+    device_id: 4701856ed53837e3faad630b61748b34
+    entity_id: cf345283d35e599d1ff60b259fb0feea
+    domain: binary_sensor
+    trigger: device
+actions:
+  - type: turn_on
+    device_id: 88487e31d9bc6603ca82290260a2b744
+    entity_id: ecc064f6a122f211021b5f6d6149dbfe
+    domain: switch
+  - delay:
+      hours: 1
+      seconds: 1
+  - type: turn_off
+    device_id: 88487e31d9bc6603ca82290260a2b744
+    entity_id: ecc064f6a122f211021b5f6d6149dbfe
+    domain: switch
+mode: single
+""",
+            "Validée",
+            43,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    # The Drive production uses opaque registry refs. A friendly-name match must
+    # never fabricate the missing trigger/target binding.
+    assert retrieve_triggered_chains(
+        "quand la brosse à dents est utilisée", entities, reconciliation, graph
+    ) == []
+    assert retrieve_automation_chains(
+        "qu'est-ce qui allume la prise brosse à dents", entities, reconciliation, graph
+    ) == []
+
+
+def test_drive_toothbrush_exact_registry_bindings_restore_on_and_delayed_off():
+    entities = [
+        EntityRecord("automation.brosse", "automation", "Charge brosse a dents", "on"),
+        EntityRecord("binary_sensor.brosse_utilisee", "binary_sensor", "Brosse utilisée", "off"),
+        EntityRecord("switch.prise_brosse_a_dents", "switch", "Prise brosse à dents", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Charge brosse a dents",
+            """
+alias: Charge brosse a dents
+triggers:
+  - type: turned_on
+    device_id: 4701856ed53837e3faad630b61748b34
+    entity_id: cf345283d35e599d1ff60b259fb0feea
+    domain: binary_sensor
+    trigger: device
+actions:
+  - type: turn_on
+    device_id: 88487e31d9bc6603ca82290260a2b744
+    entity_id: ecc064f6a122f211021b5f6d6149dbfe
+    domain: switch
+  - delay:
+      hours: 1
+      seconds: 1
+  - type: turn_off
+    device_id: 88487e31d9bc6603ca82290260a2b744
+    entity_id: ecc064f6a122f211021b5f6d6149dbfe
+    domain: switch
+mode: single
+""",
+            "Validée",
+            43,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    resolved = resolve_registry_edges(
+        graph,
+        entities,
+        [
+            RegistryBinding(
+                "cf345283d35e599d1ff60b259fb0feea",
+                "binary_sensor.brosse_utilisee",
+                "ha_entity_registry_readonly",
+            ),
+            RegistryBinding(
+                "ecc064f6a122f211021b5f6d6149dbfe",
+                "switch.prise_brosse_a_dents",
+                "ha_entity_registry_readonly",
+            ),
+        ],
+    )
+    on = retrieve_automation_chains(
+        "qu'est-ce qui allume la prise brosse à dents", entities, reconciliation, resolved
+    )[0]
+    off = retrieve_automation_chains(
+        "qu'est-ce qui éteint la prise brosse à dents", entities, reconciliation, resolved
+    )[0]
+    assert on["effect"] == "turn_on"
+    assert on["trigger"] == "binary_sensor.brosse_utilisee"
+    assert all(x["predicate"] != "DELAY_BARRIER" for x in on["barriers"])
+    assert off["effect"] == "turn_off"
+    assert any(
+        x["predicate"] == "DELAY_BARRIER" and "hours" in x["object"]
+        for x in off["barriers"]
+    )
