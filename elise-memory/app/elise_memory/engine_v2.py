@@ -366,9 +366,7 @@ def _production_aliases(production: str) -> tuple[str, ...]:
     except Exception:
         # A broken Production row must not become authoritative. The fallback is
         # only used for reconciliation diagnostics and does not parse behavior.
-        match = re.search(r"(?:^|
-)\s*alias:\s*([^
-]+)", production)
+        match = re.search(r"(?:^|\\n)\\s*alias:\\s*([^\\n]+)", production)
         if match:
             aliases.append(match.group(1).strip().strip("'\""))
     return tuple(dict.fromkeys(aliases))
