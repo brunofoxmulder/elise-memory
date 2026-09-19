@@ -216,6 +216,15 @@ class R8RelationDoc:
     last_verification: str | None
 
 
+@dataclass(frozen=True)
+class RegistryBinding:
+    """Explicit proof that a HA registry reference belongs to a current entity."""
+
+    registry_ref: str
+    entity_id: str
+    source: str
+
+
 def normalize_text(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
     return "".join(
@@ -1261,6 +1270,72 @@ def extract_automation_edges(automation: ReconciledAutomation) -> list[GraphEdge
         )
     # Stable de-duplication protects nested parsing from producing duplicates.
     return list(dict.fromkeys(edges))
+
+
+def resolve_registry_edges(
+    edges: Iterable[GraphEdge],
+    entities: Iterable[EntityRecord],
+    bindings: Iterable[RegistryBinding],
+) -> list[GraphEdge]:
+    """Resolve opaque entity-registry refs only from explicit trusted bindings.
+
+    The resolver is fail-closed: a binding must point to a current HA entity and
+    the same registry reference may not map to two different entities.
+    """
+    current_ids = {entity.entity_id for entity in entities}
+    mapping: dict[str, RegistryBinding] = {}
+
+    for binding in bindings:
+        raw = binding.registry_ref.strip()
+        if raw.startswith("registry_ref:"):
+            raw = raw.split(":", 1)[1]
+        if not _OPAQUE_ENTITY_REF_RE.fullmatch(raw):
+            raise ValueError(f"invalid_registry_ref:{binding.registry_ref}")
+        if binding.entity_id not in current_ids:
+            raise ValueError(f"registry_binding_not_current:{binding.entity_id}")
+        existing = mapping.get(raw)
+        if existing and existing.entity_id != binding.entity_id:
+            raise ValueError(f"conflicting_registry_binding:{raw}")
+        mapping[raw] = RegistryBinding(raw, binding.entity_id, binding.source)
+
+    out: list[GraphEdge] = []
+    for edge in edges:
+        subject = edge.subject
+        obj = edge.object
+        detail = _edge_detail(edge)
+
+        if subject.startswith("registry_ref:"):
+            raw = subject.split(":", 1)[1]
+            binding = mapping.get(raw)
+            if binding:
+                subject = binding.entity_id
+                detail = {
+                    **detail,
+                    "resolved_registry_ref": raw,
+                    "identity_resolution_source": binding.source,
+                }
+
+        if obj.startswith("registry_ref:"):
+            raw = obj.split(":", 1)[1]
+            binding = mapping.get(raw)
+            if binding:
+                obj = binding.entity_id
+                detail = {
+                    **detail,
+                    "resolved_registry_ref": raw,
+                    "identity_resolution_source": binding.source,
+                }
+
+        out.append(
+            GraphEdge(
+                subject=subject,
+                predicate=edge.predicate,
+                object=obj,
+                source=edge.source,
+                detail=_detail(**detail) if detail else edge.detail,
+            )
+        )
+    return list(dict.fromkeys(out))
 
 
 def build_operational_graph(
