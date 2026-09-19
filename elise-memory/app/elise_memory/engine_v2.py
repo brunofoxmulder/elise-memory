@@ -251,6 +251,22 @@ class OperationalAudit:
     active_without_effect_edge: tuple[str, ...]
     predicate_counts: dict[str, int]
 
+@dataclass(frozen=True)
+class ScriptCatalogEntry:
+    script_id: str
+    file_name: str
+    services: tuple[str, ...]
+    domain: str | None
+    role: str | None
+    status: str | None
+    version: str | None
+    automation_links: str | None
+    entities: tuple[str, ...]
+    last_modified: str | None
+    risks: str | None
+    comments: str | None
+
+
 
 def normalize_text(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
@@ -443,6 +459,96 @@ def business_context_for_entity(
         if item.binding_entity_id == entity_id
         and item.binding_status in {"current_entity", "current_alias"}
     ]
+
+
+def script_catalog_from_rows(
+    header: list[object],
+    rows: list[list[object]],
+) -> list[ScriptCatalogEntry]:
+    """Parse the Scripts Pyscript catalogue as documentary enrichment only."""
+    names = [str(x or "").strip() for x in header]
+    required = {
+        "ID", "Nom du fichier", "Service HA exposé", "Domaine", "Rôle",
+        "Statut", "Version actuelle", "Automatisation liée",
+        "Entités HA utilisées", "Dernière modification",
+        "Risques / points sensibles", "Commentaires",
+    }
+    if not required.issubset(set(names)):
+        missing = sorted(required - set(names))
+        raise ValueError("script_catalog_missing_columns:" + ",".join(missing))
+
+    out: list[ScriptCatalogEntry] = []
+    for raw in rows:
+        padded = list(raw) + [""] * (len(names) - len(raw))
+        row = dict(zip(names, padded))
+        script_id = str(row["ID"] or "").strip()
+        file_name = str(row["Nom du fichier"] or "").strip()
+        if not script_id and not file_name:
+            continue
+
+        services = tuple(
+            item.strip()
+            for item in str(row["Service HA exposé"] or "").split(";")
+            if item.strip() and "." in item
+        )
+        entities = tuple(
+            item.strip()
+            for item in str(row["Entités HA utilisées"] or "").split(";")
+            if item.strip() and "." in item
+        )
+        out.append(
+            ScriptCatalogEntry(
+                script_id=script_id,
+                file_name=file_name,
+                services=services,
+                domain=str(row["Domaine"] or "").strip() or None,
+                role=str(row["Rôle"] or "").strip() or None,
+                status=str(row["Statut"] or "").strip() or None,
+                version=str(row["Version actuelle"] or "").strip() or None,
+                automation_links=str(row["Automatisation liée"] or "").strip() or None,
+                entities=entities,
+                last_modified=str(row["Dernière modification"] or "").strip() or None,
+                risks=str(row["Risques / points sensibles"] or "").strip() or None,
+                comments=str(row["Commentaires"] or "").strip() or None,
+            )
+        )
+    return out
+
+
+def script_context_for_services(
+    services: Iterable[str],
+    catalog: Iterable[ScriptCatalogEntry],
+) -> list[dict[str, Any]]:
+    """Return exact script metadata for services already proved by Production.
+
+    The catalogue never creates a service call. Similar names are deliberately
+    ignored; only exact service identity can enrich an operational chain.
+    """
+    requested = {
+        service.split(":", 1)[1] if service.startswith("service:") else service
+        for service in services
+    }
+    out: list[dict[str, Any]] = []
+    for item in catalog:
+        matched = sorted(set(item.services) & requested)
+        if not matched:
+            continue
+        out.append({
+            "script_id": item.script_id,
+            "file_name": item.file_name,
+            "services": matched,
+            "domain": item.domain,
+            "role": item.role,
+            "status": item.status,
+            "version": item.version,
+            "automation_links": item.automation_links,
+            "entities": list(item.entities),
+            "last_modified": item.last_modified,
+            "risks": item.risks,
+            "comments": item.comments,
+        })
+    out.sort(key=lambda item: (item["script_id"], item["file_name"]))
+    return out
 
 
 def object_dependencies_from_rows(
@@ -2049,6 +2155,7 @@ def assemble_evidence_context(
     dependency_edges_in: Iterable[GraphEdge] = (),
     r8_edges_in: Iterable[GraphEdge] = (),
     business_functions: Iterable[ReconciledBusinessFunction] = (),
+    script_catalog: Iterable[ScriptCatalogEntry] = (),
 ) -> dict[str, Any]:
     """Assemble Drive evidence without letting lower layers invent behavior.
 
@@ -2060,6 +2167,7 @@ def assemble_evidence_context(
     deps = list(dependency_edges_in)
     r8 = list(r8_edges_in)
     business = list(business_functions)
+    script_catalog_list = list(script_catalog)
 
     core = retrieve_operational_context(
         query, entity_list, reconciliation, production
@@ -2146,6 +2254,16 @@ def assemble_evidence_context(
                 }
             )
 
+    script_services = sorted({
+        edge.object
+        for edge in production
+        if edge.subject in relevant_automations
+        and edge.predicate in {"CALLS_PYSCRIPT", "CALLS_SCRIPT"}
+    })
+    script_context = script_context_for_services(
+        script_services, script_catalog_list
+    )
+
     unresolved = sorted({
         node
         for edge in production
@@ -2167,6 +2285,7 @@ def assemble_evidence_context(
             "objects_ha": dependency_context,
             "r8": r8_context,
             "metier": business_context,
+            "scripts": script_context,
         },
         "unresolved_refs": unresolved,
         "precedence": [
@@ -2175,6 +2294,7 @@ def assemble_evidence_context(
             "objects_ha",
             "r8",
             "metier",
+            "scripts",
         ],
     }
 
