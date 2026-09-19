@@ -1,6 +1,6 @@
 name: Élise Memory
 description: Mémoire locale déterministe de Maison Cognitive
-version: "0.1.0-dev.9"
+version: "0.1.0-dev.10"
 slug: elise_memory
 init: false
 hassio_api: true
@@ -16,6 +16,8 @@ ports_description:
 map:
   - type: data
     read_only: false
+  - type: addon_config
+    read_only: true
 options:
   sync_enabled: false
 schema:
