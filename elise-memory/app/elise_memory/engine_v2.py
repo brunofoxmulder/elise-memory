@@ -232,6 +232,26 @@ class RegistryBinding:
     source: str
 
 
+@dataclass(frozen=True)
+class OperationalAudit:
+    current_automations: int
+    current_active: int
+    current_disabled: int
+    documented: int
+    matched_active: int
+    matched_disabled: int
+    documented_only: int
+    current_without_document: int
+    parsed_active: int
+    parse_errors: tuple[dict[str, str], ...]
+    unresolved_registry_refs: tuple[str, ...]
+    unresolved_device_refs: tuple[str, ...]
+    unresolved_area_refs: tuple[str, ...]
+    active_without_trigger_edge: tuple[str, ...]
+    active_without_effect_edge: tuple[str, ...]
+    predicate_counts: dict[str, int]
+
+
 def normalize_text(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
     return "".join(
@@ -1494,6 +1514,107 @@ def build_operational_graph(
             continue
         edges.extend(extract_automation_edges(automation))
     return list(dict.fromkeys(edges))
+
+
+
+def audit_operational_model(
+    entities: Iterable[EntityRecord],
+    docs: Iterable[AutomationDoc],
+) -> OperationalAudit:
+    """Audit the whole current automation corpus without inventing missing links.
+
+    Unlike the query path, this function is intentionally exhaustive. Each
+    reconciled active Production is parsed independently so one malformed row
+    cannot hide the state of the remaining corpus.
+    """
+    entity_list = list(entities)
+    doc_list = list(docs)
+    reconciliation = reconcile_automations(entity_list, doc_list)
+    current = [item for item in entity_list if item.domain == "automation"]
+    matched_active = [item for item in reconciliation.matched if item.state == "on"]
+    matched_disabled = [item for item in reconciliation.matched if item.state != "on"]
+
+    edges: list[GraphEdge] = []
+    parse_errors: list[dict[str, str]] = []
+    parsed_ids: set[str] = set()
+    for automation in matched_active:
+        try:
+            extracted = extract_automation_edges(automation)
+        except Exception as exc:
+            parse_errors.append({
+                "automation_entity_id": automation.entity_id,
+                "automation_name": automation.name,
+                "error": f"{type(exc).__name__}:{exc}",
+            })
+            continue
+        parsed_ids.add(automation.entity_id)
+        edges.extend(extracted)
+
+    predicate_counts: dict[str, int] = {}
+    for edge in edges:
+        predicate_counts[edge.predicate] = predicate_counts.get(edge.predicate, 0) + 1
+
+    unresolved_registry = sorted({
+        node
+        for edge in edges
+        for node in (edge.subject, edge.object)
+        if node.startswith("registry_ref:")
+    })
+    unresolved_device = sorted({
+        node
+        for edge in edges
+        for node in (edge.subject, edge.object)
+        if node.startswith("device_ref:")
+    })
+    unresolved_area = sorted({
+        node
+        for edge in edges
+        for node in (edge.subject, edge.object)
+        if node.startswith("area_ref:")
+    })
+
+    incoming_trigger_ids = {
+        edge.object for edge in edges if edge.predicate == "TRIGGERS"
+    }
+    effect_ids = {
+        edge.subject
+        for edge in edges
+        if edge.predicate in {
+            "ACTS_ON", "CALLS_AUTOMATION", "CALLS_SCRIPT", "CALLS_PYSCRIPT",
+            "CALLS_SERVICE", "TERMINATES"
+        }
+    }
+    active_without_trigger = tuple(sorted(
+        automation.entity_id
+        for automation in matched_active
+        if automation.entity_id in parsed_ids
+        and automation.entity_id not in incoming_trigger_ids
+    ))
+    active_without_effect = tuple(sorted(
+        automation.entity_id
+        for automation in matched_active
+        if automation.entity_id in parsed_ids
+        and automation.entity_id not in effect_ids
+    ))
+
+    return OperationalAudit(
+        current_automations=len(current),
+        current_active=sum(1 for item in current if item.state == "on"),
+        current_disabled=sum(1 for item in current if item.state != "on"),
+        documented=len(doc_list),
+        matched_active=len(matched_active),
+        matched_disabled=len(matched_disabled),
+        documented_only=len(reconciliation.documented_only),
+        current_without_document=len(reconciliation.current_without_document),
+        parsed_active=len(parsed_ids),
+        parse_errors=tuple(parse_errors),
+        unresolved_registry_refs=tuple(unresolved_registry),
+        unresolved_device_refs=tuple(unresolved_device),
+        unresolved_area_refs=tuple(unresolved_area),
+        active_without_trigger_edge=active_without_trigger,
+        active_without_effect_edge=active_without_effect,
+        predicate_counts=dict(sorted(predicate_counts.items())),
+    )
 
 
 def _intent(query: str) -> str | None:
