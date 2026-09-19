@@ -1445,3 +1445,103 @@ actions:
         and edge.object == "automation.dynamic_batteries"
     )
     assert "states.sensor" in json.loads(guard.detail)["expression"]
+
+
+
+def test_french_entry_lamp_question_returns_both_active_automations():
+    entities = [
+        EntityRecord("automation.entree_main", "automation", "Allumer lampe entrée selon présence", "on"),
+        EntityRecord("automation.entree_unlock", "automation", "Allumer lampe entrée au déverrouillage", "on"),
+        EntityRecord("light.entree", "light", "Lampe entrée", "off"),
+        EntityRecord("binary_sensor.mouvement_entree", "binary_sensor", "Mouvement entrée", "off"),
+        EntityRecord("lock.porte", "lock", "Porte d'entrée", "locked"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Allumer lampe entrée selon présence",
+            """
+alias: Allumer lampe entrée selon présence
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.mouvement_entree
+    to: "on"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entree
+""",
+            "Validée",
+            80,
+        ),
+        AutomationDoc(
+            "Allumer lampe entrée au déverrouillage",
+            """
+alias: Allumer lampe entrée au déverrouillage
+triggers:
+  - trigger: state
+    entity_id: lock.porte
+    to: unlocked
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entree
+""",
+            "Validée",
+            81,
+        ),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_automation_chains(
+        "qu'est-ce qui allume la lampe de l'entrée ?", entities, reconciliation, graph
+    )
+    assert {x["automation_entity_id"] for x in result} == {
+        "automation.entree_main", "automation.entree_unlock"
+    }
+
+
+def test_french_window_question_resolves_trigger_source_before_effect():
+    entities = [
+        EntityRecord("automation.volet", "automation", "Ouverture volet salon par ouverture fenêtre", "on"),
+        EntityRecord("binary_sensor.fenetre", "binary_sensor", "Fenêtre salon", "off"),
+        EntityRecord("cover.volet", "cover", "Volet salon", "closed"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Ouverture volet salon par ouverture fenêtre",
+            """
+alias: Ouverture volet salon par ouverture fenêtre
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.fenetre
+    to: "on"
+actions:
+  - action: cover.set_cover_position
+    target:
+      entity_id: cover.volet
+    data:
+      position: 100
+""",
+            "Validée",
+            82,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_triggered_chains(
+        "que se passe-t-il quand j'ouvre la fenêtre du salon ?",
+        entities, reconciliation, graph
+    )
+    assert [
+        (x["automation_entity_id"], x["target"], x["effect"])
+        for x in result
+    ] == [("automation.volet", "cover.volet", "open")]
+
+
+def test_french_charge_word_resolves_switch_not_power_sensor():
+    entities = [
+        EntityRecord("switch.prise_aspirateur", "switch", "Prise aspirateur", "off"),
+        EntityRecord("sensor.prise_aspirateur_power", "sensor", "Prise aspirateur Puissance", "0"),
+    ]
+    result = resolve_entities("comment fonctionne la charge de l'aspirateur ?", entities)
+    assert result[0][0].entity_id == "switch.prise_aspirateur"
