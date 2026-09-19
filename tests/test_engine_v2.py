@@ -4,12 +4,14 @@ from elise_memory.engine_v2 import (
     AutomationDoc,
     BusinessFunctionDoc,
     EntityRecord,
+    ObjectDependencyDoc,
     FactType,
     SourceFact,
     SourceKind,
     build_operational_graph,
     business_context_for_entity,
     choose_preferred_fact,
+    dependency_edges,
     reconcile_automations,
     reconcile_business_functions,
     resolve_entities,
@@ -413,3 +415,55 @@ def test_current_binding_and_semantics_are_not_collapsed_into_one_fact():
     assert old.binding_status == "stale_entity"
     assert new.binding_status == "current_entity"
     assert business_context_for_entity("cover.new", result) == [new]
+
+
+def test_objects_ha_dependency_is_enrichment_not_behavior():
+    entities, reconciliation, graph = _engine()
+    deps = [
+        ObjectDependencyDoc(
+            object_ref="light.entry",
+            automation_name="Entry light main",
+            domain="light",
+            name="Entry lamp",
+            observed_state="off",
+        )
+    ]
+    dep_edges = dependency_edges(entities, reconciliation, deps)
+    assert dep_edges[0].predicate == "USES"
+    result = retrieve_automation_chains(
+        "what turns on the entry lamp",
+        entities,
+        reconciliation,
+        dep_edges,
+    )
+    assert result == []
+
+
+def test_objects_ha_device_reference_stays_unresolved():
+    entities, reconciliation, _ = _engine()
+    deps = [
+        ObjectDependencyDoc(
+            object_ref="device_id:11111111111111111111111111111111",
+            automation_name="Entry light main",
+        )
+    ]
+    dep_edges = dependency_edges(entities, reconciliation, deps)
+    assert dep_edges[0].object == "device_ref:11111111111111111111111111111111"
+    assert dep_edges[0].predicate == "USES"
+
+
+def test_objects_ha_current_entity_can_enrich_a_reconciled_automation():
+    entities, reconciliation, _ = _engine()
+    deps = [
+        ObjectDependencyDoc(
+            object_ref="binary_sensor.entry_motion",
+            automation_name="Entry light main",
+            domain="binary_sensor",
+            name="Entry motion",
+            observed_state="off",
+        )
+    ]
+    dep_edges = dependency_edges(entities, reconciliation, deps)
+    assert [(edge.subject, edge.predicate, edge.object) for edge in dep_edges] == [
+        ("automation.entry_main", "USES", "binary_sensor.entry_motion")
+    ]
