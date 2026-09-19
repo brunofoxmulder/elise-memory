@@ -828,7 +828,7 @@ mode: single
     assert any(x["subject"] == "binary_sensor.brosse_utilisee" and x["predicate"] == "TRIGGERS" for x in on["context"])
     assert on["barriers"] == []
     assert off["effect"] == "turn_off"
-    assert any(x["detail"].get("kind") == "delay" and x["detail"].get("duration", {}).get("hours") == 1 for x in off["barriers"])
+    assert any(x["detail"].get("delay", {}).get("hours") == 1 for x in off["barriers"])
 
 
 def test_drive_salon_window_opening_requires_exact_opaque_trigger_identity():
