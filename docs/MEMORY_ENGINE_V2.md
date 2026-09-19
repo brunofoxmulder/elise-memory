@@ -181,3 +181,19 @@ La suite de régression couvre maintenant :
 - résolution explicite des références de registre sans guessing.
 
 Cette couverture reste une validation de code. Elle ne remplace ni la validation terrain Home Assistant, ni la résolution des références opaques par le registre HA réel.
+
+
+## Contrat de traversée Automation → Script/Pyscript
+
+Un appel `CALLS_SCRIPT` ou `CALLS_PYSCRIPT` constitue une preuve que l'automatisation invoque un service. Il ne constitue **pas**, à lui seul, une preuve de l'effet final de ce service sur une entité Home Assistant.
+
+La traversée vers une action finale n'est autorisée que si le contenu exécutable appelé est lui-même disponible dans une source opérationnelle réconciliée et prouvée. Le catalogue documentaire « Scripts Pyscript » peut enrichir le rôle, le nom et les dépendances, mais ne doit jamais fabriquer une arête `ACTS_ON`.
+
+En conséquence :
+- automation → appel script/Pyscript prouvé : conservé ;
+- contenu exécutable du script absent : arrêt de la chaîne, résultat indéterminé pour l'effet final ;
+- simple ligne documentaire affirmant qu'un Pyscript agit sur une lampe/prise/volet : insuffisante ;
+- contenu exécutable prouvé : la future traversée peut prolonger la chaîne tout en conservant la provenance de chaque arête ;
+- un script d'observation/journalisation ne devient jamais causal simplement parce qu'il reçoit l'entity_id d'un objet dans ses données.
+
+Ce verrou fail-closed est volontaire : il empêche de reconstruire par similarité documentaire les faux liens causaux qui ont motivé V2.
