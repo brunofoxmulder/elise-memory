@@ -10,9 +10,9 @@ arch:
 startup: application
 boot: auto
 ports:
-  8099/tcp: 8099
+  8099/tcp: null
 ports_description:
-  8099/tcp: API Élise Memory
+  8099/tcp: API Élise Memory (exposition hôte optionnelle)
 map:
   - type: data
     read_only: false
