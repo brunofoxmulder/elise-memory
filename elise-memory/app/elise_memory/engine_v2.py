@@ -199,6 +199,22 @@ class ObjectDependencyDoc:
     observed_state: str | None = None
 
 
+@dataclass(frozen=True)
+class R8RelationDoc:
+    relation_id: str
+    chain: str
+    source_type: str
+    source_id: str
+    relation: str
+    target_type: str
+    target_id: str
+    role: str | None
+    evidence: str | None
+    confidence: str | None
+    status: str
+    last_verification: str | None
+
+
 def normalize_text(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
     return "".join(
@@ -465,6 +481,122 @@ def dependency_edges(
                     domain=dep.domain,
                     name=dep.name,
                     observed_state=dep.observed_state,
+                ),
+            )
+        )
+    return list(dict.fromkeys(edges))
+
+
+def _r8_status_is_current(value: object) -> bool:
+    folded = normalize_text(value)
+    if not folded:
+        return False
+    veto = (
+        "historique", "obsolet", "legacy", "remplace", "retire", "archive",
+        "a observer", "observation", "prevision", "hypothese",
+        "requalifier", "ko",
+    )
+    if any(word in folded for word in veto):
+        return False
+    positive = (
+        "valide", "production", "operationnel", "actif", "permanent",
+        "obligatoire", "fonctionnel", "installe",
+    )
+    return any(word in folded for word in positive)
+
+
+def r8_relations_from_rows(
+    header: list[object],
+    rows: list[list[object]],
+) -> list[R8RelationDoc]:
+    names = [str(x or "").strip() for x in header]
+    required = {
+        "Relation_ID", "Chaîne_fonctionnelle", "Source_type", "Source_ID",
+        "Relation", "Cible_type", "Cible_ID", "Rôle_ou_effet",
+        "Source_de_preuve", "Confiance", "Statut", "Dernière_vérification",
+    }
+    if not required.issubset(set(names)):
+        missing = sorted(required - set(names))
+        raise ValueError("r8_missing_columns:" + ",".join(missing))
+    out: list[R8RelationDoc] = []
+    for raw in rows:
+        padded = list(raw) + [""] * (len(names) - len(raw))
+        row = dict(zip(names, padded))
+        relation_id = str(row["Relation_ID"] or "").strip()
+        if not relation_id or not _r8_status_is_current(row["Statut"]):
+            continue
+        out.append(
+            R8RelationDoc(
+                relation_id=relation_id,
+                chain=str(row["Chaîne_fonctionnelle"] or "").strip(),
+                source_type=str(row["Source_type"] or "").strip(),
+                source_id=str(row["Source_ID"] or "").strip(),
+                relation=str(row["Relation"] or "").strip(),
+                target_type=str(row["Cible_type"] or "").strip(),
+                target_id=str(row["Cible_ID"] or "").strip(),
+                role=str(row["Rôle_ou_effet"] or "").strip() or None,
+                evidence=str(row["Source_de_preuve"] or "").strip() or None,
+                confidence=str(row["Confiance"] or "").strip() or None,
+                status=str(row["Statut"] or "").strip(),
+                last_verification=str(row["Dernière_vérification"] or "").strip() or None,
+            )
+        )
+    return out
+
+
+def _resolve_document_node(
+    value: str,
+    entities: Iterable[EntityRecord],
+    reconciliation: ReconciliationResult,
+) -> tuple[str, str]:
+    ref = value.strip()
+    current_ids = {entity.entity_id for entity in entities}
+    if ref in current_ids:
+        return ref, "current_entity"
+    by_automation_name = {
+        normalize_text(item.name): item.entity_id
+        for item in reconciliation.matched
+    }
+    automation_id = by_automation_name.get(normalize_text(ref))
+    if automation_id:
+        return automation_id, "current_automation"
+    if _ENTITY_ID_RE.match(ref):
+        return f"stale_or_external_entity:{ref}", "stale_or_external_entity"
+    return f"document_ref:{ref}", "document_only"
+
+
+def r8_edges(
+    entities: Iterable[EntityRecord],
+    reconciliation: ReconciliationResult,
+    relations: Iterable[R8RelationDoc],
+) -> list[GraphEdge]:
+    """Preserve R8 as corroborating/documentary relations, never as ACTS_ON."""
+    entity_list = list(entities)
+    edges: list[GraphEdge] = []
+    for relation in relations:
+        source, source_binding = _resolve_document_node(
+            relation.source_id, entity_list, reconciliation
+        )
+        target, target_binding = _resolve_document_node(
+            relation.target_id, entity_list, reconciliation
+        )
+        predicate = "R8:" + normalize_text(relation.relation).replace(" ", "_")
+        edges.append(
+            GraphEdge(
+                source,
+                predicate,
+                target,
+                SourceKind.R8_RELATION,
+                _detail(
+                    relation_id=relation.relation_id,
+                    chain=relation.chain,
+                    role=relation.role,
+                    evidence=relation.evidence,
+                    confidence=relation.confidence,
+                    status=relation.status,
+                    last_verification=relation.last_verification,
+                    source_binding=source_binding,
+                    target_binding=target_binding,
                 ),
             )
         )
