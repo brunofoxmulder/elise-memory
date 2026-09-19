@@ -683,6 +683,10 @@ def reconcile_automations(
 def _entity_refs(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
+    # YAML can parse an all-numeric 32-character registry id as an integer.
+    # Preserve it losslessly as a reference instead of silently dropping it.
+    if isinstance(value, int) and not isinstance(value, bool):
+        return [str(value)]
     if isinstance(value, list):
         out: list[str] = []
         for item in value:
