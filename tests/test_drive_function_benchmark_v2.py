@@ -1182,3 +1182,177 @@ def test_drive_tineco_battery_query_prefers_precise_sensor_over_generic_switch()
     ranked = resolve_entities("batterie Tineco", entities)
     assert ranked[0][0].entity_id == "sensor.tineco_battery"
     assert ranked[0][0].entity_id != "switch.0xa4c1387da600c253"
+
+
+def test_drive_s23_hc_branch_local_causes_and_multiple_off_paths():
+    entities = [
+        EntityRecord("automation.charge_s23_hc", "automation", "charge S23 sur chargeur téléphone heure creuse", "on"),
+        EntityRecord("automation.stop_hc_charges", "automation", "Arrêt charges heures creuses", "on"),
+        EntityRecord("binary_sensor.heures_creuses", "binary_sensor", "Heures creuses", "on"),
+        EntityRecord("sensor.s23_battery_level", "sensor", "Batterie S23", "80"),
+        EntityRecord("switch.prise_intelligente_l4", "switch", "Chargeur téléphone S23", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "charge S23 sur chargeur téléphone heure creuse",
+            """
+alias: charge S23 sur chargeur téléphone heure creuse
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.heures_creuses
+    to: "on"
+    id: hc
+  - trigger: numeric_state
+    entity_id: sensor.s23_battery_level
+    below: 95
+    id: batterie_basse
+  - trigger: numeric_state
+    entity_id: sensor.s23_battery_level
+    above: 99
+    id: batterie_pleine
+conditions:
+  - condition: state
+    entity_id: binary_sensor.heures_creuses
+    state: "on"
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: batterie_basse
+        sequence:
+          - delay:
+              minutes: 30
+          - action: switch.turn_on
+            target:
+              entity_id: switch.prise_intelligente_l4
+      - conditions:
+          - condition: trigger
+            id: batterie_pleine
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: switch.prise_intelligente_l4
+mode: restart
+""",
+            "Validée / production",
+            32,
+        ),
+        AutomationDoc(
+            "Arrêt charges heures creuses",
+            """
+alias: Arrêt charges heures creuses
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.heures_creuses
+    from: "on"
+    to: "off"
+conditions: []
+actions:
+  - action: switch.turn_off
+    target:
+      entity_id: switch.prise_intelligente_l4
+mode: single
+""",
+            "Validée / production",
+            34,
+        ),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    on = retrieve_automation_chains(
+        "qu'est-ce qui allume le chargeur téléphone S23", entities, reconciliation, graph
+    )
+    on_item = next(x for x in on if x["automation_entity_id"] == "automation.charge_s23_hc")
+    assert on_item["effect"] == "turn_on"
+    assert any(x["detail"].get("kind") == "delay" for x in on_item["barriers"])
+    assert any(
+        x["predicate"] == "TRIGGERS"
+        and x["subject"] == "sensor.s23_battery_level"
+        and x["detail"].get("below") == 95
+        for x in on_item["context"]
+    )
+
+    off = retrieve_automation_chains(
+        "qu'est-ce qui éteint le chargeur téléphone S23", entities, reconciliation, graph
+    )
+    off_ids = {x["automation_entity_id"] for x in off}
+    assert off_ids == {"automation.charge_s23_hc", "automation.stop_hc_charges"}
+    charge_off = next(x for x in off if x["automation_entity_id"] == "automation.charge_s23_hc")
+    assert not any(x["detail"].get("kind") == "delay" for x in charge_off["barriers"])
+    assert any(
+        x["predicate"] == "TRIGGERS"
+        and x["subject"] == "sensor.s23_battery_level"
+        and x["detail"].get("above") == 99
+        for x in charge_off["context"]
+    )
+
+
+def test_drive_s23_hc_end_and_full_battery_do_not_cross_contaminate_causes():
+    entities = [
+        EntityRecord("automation.charge_s23_hc", "automation", "charge S23 sur chargeur téléphone heure creuse", "on"),
+        EntityRecord("automation.stop_hc_charges", "automation", "Arrêt charges heures creuses", "on"),
+        EntityRecord("binary_sensor.heures_creuses", "binary_sensor", "Heures creuses", "on"),
+        EntityRecord("sensor.s23_battery_level", "sensor", "Batterie S23", "80"),
+        EntityRecord("switch.prise_intelligente_l4", "switch", "Chargeur téléphone S23", "on"),
+    ]
+    docs = [
+        AutomationDoc("charge S23 sur chargeur téléphone heure creuse", """
+alias: charge S23 sur chargeur téléphone heure creuse
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.s23_battery_level
+    below: 95
+    id: batterie_basse
+  - trigger: numeric_state
+    entity_id: sensor.s23_battery_level
+    above: 99
+    id: batterie_pleine
+conditions:
+  - condition: state
+    entity_id: binary_sensor.heures_creuses
+    state: "on"
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: batterie_basse
+        sequence:
+          - delay: {minutes: 30}
+          - action: switch.turn_on
+            target: {entity_id: switch.prise_intelligente_l4}
+      - conditions:
+          - condition: trigger
+            id: batterie_pleine
+        sequence:
+          - action: switch.turn_off
+            target: {entity_id: switch.prise_intelligente_l4}
+mode: restart
+""", "Validée / production", 32),
+        AutomationDoc("Arrêt charges heures creuses", """
+alias: Arrêt charges heures creuses
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.heures_creuses
+    from: "on"
+    to: "off"
+actions:
+  - action: switch.turn_off
+    target: {entity_id: switch.prise_intelligente_l4}
+mode: single
+""", "Validée / production", 34),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    hc_end = retrieve_triggered_chains(
+        "quand les heures creuses passent à off", entities, reconciliation, graph
+    )
+    assert {x["automation_entity_id"] for x in hc_end} == {"automation.stop_hc_charges"}
+
+    full = retrieve_triggered_chains(
+        "quand la batterie S23 dépasse 99", entities, reconciliation, graph
+    )
+    full_ids = {x["automation_entity_id"] for x in full}
+    assert "automation.charge_s23_hc" in full_ids
+    assert "automation.stop_hc_charges" not in full_ids
