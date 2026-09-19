@@ -700,6 +700,16 @@ def _node_for_entity_ref(ref: str) -> str:
     return f"unresolved_ref:{ref}"
 
 
+def _device_node(value: object) -> str | None:
+    raw = str(value or "").strip()
+    return f"device_ref:{raw}" if raw else None
+
+
+def _area_node(value: object) -> str | None:
+    raw = str(value or "").strip()
+    return f"area_ref:{raw}" if raw else None
+
+
 def _detail(**values: Any) -> str:
     compact = {key: value for key, value in values.items() if value not in (None, "", [], {})}
     return json.dumps(compact, ensure_ascii=False, sort_keys=True)
@@ -723,23 +733,25 @@ def _effect_for_service(service: str, data: Any = None) -> str | None:
         if numeric == 0:
             return "close"
         return "set_position"
-    mapping = {
-        "light.turn_on": "turn_on",
-        "light.turn_off": "turn_off",
-        "switch.turn_on": "turn_on",
-        "switch.turn_off": "turn_off",
-        "input_boolean.turn_on": "turn_on",
-        "input_boolean.turn_off": "turn_off",
-        "cover.open_cover": "open",
-        "cover.close_cover": "close",
-        "lock.lock": "lock",
-        "lock.unlock": "unlock",
-        "climate.set_hvac_mode": "set_hvac_mode",
-        "climate.set_temperature": "set_temperature",
-        "input_select.select_option": "select_option",
-        "automation.trigger": "trigger",
+
+    method = service.rsplit(".", 1)[-1]
+    generic = {
+        "turn_on": "turn_on",
+        "turn_off": "turn_off",
+        "toggle": "toggle",
+        "open_cover": "open",
+        "close_cover": "close",
+        "stop_cover": "stop",
+        "lock": "lock",
+        "unlock": "unlock",
+        "set_hvac_mode": "set_hvac_mode",
+        "set_temperature": "set_temperature",
+        "select_option": "select_option",
+        "set_value": "set_value",
+        "trigger": "trigger",
+        "reload": "reload",
     }
-    return mapping.get(service)
+    return generic.get(method)
 
 
 def _walk_trigger(
@@ -765,11 +777,21 @@ def _walk_trigger(
         duration=node.get("for"),
         trigger_id=node.get("id"),
     )
-    for ref in _entity_refs(node.get("entity_id")):
+    entity_refs = _entity_refs(node.get("entity_id"))
+    for ref in entity_refs:
         edges.append(
             GraphEdge(
                 _node_for_entity_ref(ref), predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION, detail,
+            )
+        )
+    device_node = _device_node(node.get("device_id"))
+    if device_node:
+        edges.append(
+            GraphEdge(
+                device_node, predicate, automation_id,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(via="device", trigger=node.get("trigger") or node.get("platform")),
             )
         )
 
@@ -801,7 +823,24 @@ def _walk_trigger(
         edges.append(
             GraphEdge(
                 f"event:{node.get('event_type')}", predicate, automation_id,
-                SourceKind.AUTOMATION_PRODUCTION, detail,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(event_type=node.get("event_type"), event_data=node.get("event_data")),
+            )
+        )
+    elif trigger_kind == "webhook" and node.get("webhook_id"):
+        edges.append(
+            GraphEdge(
+                f"webhook:{node.get('webhook_id')}", predicate, automation_id,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(via="webhook"),
+            )
+        )
+    elif trigger_kind == "homeassistant" and node.get("event"):
+        edges.append(
+            GraphEdge(
+                f"homeassistant:{node.get('event')}", predicate, automation_id,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(via="homeassistant"),
             )
         )
 
@@ -847,6 +886,15 @@ def _walk_condition(
                 SourceKind.AUTOMATION_PRODUCTION, detail,
             )
         )
+    device_node = _device_node(node.get("device_id"))
+    if device_node:
+        edges.append(
+            GraphEdge(
+                device_node, predicate, automation_id,
+                SourceKind.AUTOMATION_PRODUCTION,
+                _detail(via="device", condition=condition),
+            )
+        )
     if condition == "sun":
         edges.append(
             GraphEdge(
@@ -890,60 +938,143 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
 
     if "wait_for_trigger" in node:
         _walk_trigger(node["wait_for_trigger"], automation_id, edges, predicate="WAITS_FOR")
-
-    service = node.get("action") or node.get("service")
-    if isinstance(service, str) and "." in service:
-        target = node.get("target")
-        target_refs: list[str] = []
-        if isinstance(target, dict):
-            target_refs.extend(_entity_refs(target.get("entity_id")))
-        target_refs.extend(_entity_refs(node.get("entity_id")))
-
-        predicate = "CALLS_AUTOMATION" if service == "automation.trigger" else "ACTS_ON"
-        if target_refs:
-            for ref in dict.fromkeys(target_refs):
+    if "wait_template" in node:
+        template = node.get("wait_template")
+        refs = _template_refs(template)
+        if refs:
+            for ref in refs:
                 edges.append(
                     GraphEdge(
-                        automation_id,
-                        predicate,
-                        _node_for_entity_ref(ref),
+                        ref, "WAITS_FOR", automation_id,
                         SourceKind.AUTOMATION_PRODUCTION,
-                        _detail(
-                            service=service,
-                            effect=_effect_for_service(service, node.get("data")),
-                            data=node.get("data"),
-                        ),
+                        _detail(via="wait_template"),
                     )
                 )
         else:
             edges.append(
                 GraphEdge(
-                    automation_id, "CALLS_SERVICE", f"service:{service}",
+                    automation_id, "BARRIER", "wait_template",
                     SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(service=service, effect=_effect_for_service(service, node.get("data"))),
+                    _detail(template=template),
+                )
+            )
+
+    service = node.get("action") or node.get("service")
+    if isinstance(service, str) and "." in service:
+        target = node.get("target")
+        data = node.get("data")
+        target_refs: list[str] = []
+        device_refs: list[str] = []
+        area_refs: list[str] = []
+        if isinstance(target, dict):
+            target_refs.extend(_entity_refs(target.get("entity_id")))
+            device_refs.extend(_entity_refs(target.get("device_id")))
+            area_refs.extend(_entity_refs(target.get("area_id")))
+        target_refs.extend(_entity_refs(node.get("entity_id")))
+        if isinstance(data, dict):
+            target_refs.extend(_entity_refs(data.get("entity_id")))
+
+        if service == "automation.trigger":
+            predicate = "CALLS_AUTOMATION"
+        elif service.startswith("script.") and service not in {"script.turn_on", "script.turn_off"}:
+            predicate = "CALLS_SCRIPT"
+        elif service.startswith("pyscript."):
+            predicate = "CALLS_PYSCRIPT"
+        else:
+            predicate = "ACTS_ON"
+
+        detail = _detail(
+            service=service,
+            effect=_effect_for_service(service, data),
+            data=data,
+        )
+        emitted = False
+        if predicate in {"CALLS_SCRIPT", "CALLS_PYSCRIPT"} and not target_refs:
+            target_node = service if predicate == "CALLS_SCRIPT" else f"service:{service}"
+            edges.append(
+                GraphEdge(
+                    automation_id, predicate, target_node,
+                    SourceKind.AUTOMATION_PRODUCTION, detail,
+                )
+            )
+            emitted = True
+
+        for ref in dict.fromkeys(target_refs):
+            edges.append(
+                GraphEdge(
+                    automation_id,
+                    predicate,
+                    _node_for_entity_ref(ref),
+                    SourceKind.AUTOMATION_PRODUCTION,
+                    detail,
+                )
+            )
+            emitted = True
+        for ref in dict.fromkeys(device_refs):
+            device_node = _device_node(ref)
+            if device_node:
+                edges.append(
+                    GraphEdge(
+                        automation_id, predicate, device_node,
+                        SourceKind.AUTOMATION_PRODUCTION,
+                        _detail(service=service, effect=_effect_for_service(service, data), via="device_target"),
+                    )
+                )
+                emitted = True
+        for ref in dict.fromkeys(area_refs):
+            area_node = _area_node(ref)
+            if area_node:
+                edges.append(
+                    GraphEdge(
+                        automation_id, predicate, area_node,
+                        SourceKind.AUTOMATION_PRODUCTION,
+                        _detail(service=service, effect=_effect_for_service(service, data), via="area_target"),
+                    )
+                )
+                emitted = True
+        if not emitted:
+            edges.append(
+                GraphEdge(
+                    automation_id, "CALLS_SERVICE", f"service:{service}",
+                    SourceKind.AUTOMATION_PRODUCTION, detail,
                 )
             )
 
     if (
         isinstance(node.get("type"), str)
         and isinstance(node.get("domain"), str)
-        and node.get("entity_id")
         and not (isinstance(service, str) and "." in service)
     ):
         pseudo_service = f"{node['domain']}.{node['type']}"
-        for ref in _entity_refs(node.get("entity_id")):
-            edges.append(
-                GraphEdge(
-                    automation_id, "ACTS_ON", _node_for_entity_ref(ref),
-                    SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(
-                        service=pseudo_service,
-                        effect=node.get("type"),
-                        device_id=node.get("device_id"),
-                        via="device_action",
-                    ),
+        refs = _entity_refs(node.get("entity_id"))
+        if refs:
+            for ref in refs:
+                edges.append(
+                    GraphEdge(
+                        automation_id, "ACTS_ON", _node_for_entity_ref(ref),
+                        SourceKind.AUTOMATION_PRODUCTION,
+                        _detail(
+                            service=pseudo_service,
+                            effect=node.get("type"),
+                            device_id=node.get("device_id"),
+                            via="device_action",
+                        ),
+                    )
                 )
-            )
+        else:
+            device_node = _device_node(node.get("device_id"))
+            if device_node:
+                edges.append(
+                    GraphEdge(
+                        automation_id, "ACTS_ON", device_node,
+                        SourceKind.AUTOMATION_PRODUCTION,
+                        _detail(
+                            service=pseudo_service,
+                            effect=node.get("type"),
+                            via="device_action_without_entity",
+                        ),
+                    )
+                )
 
     if "condition" in node and not (isinstance(service, str) and "." in service):
         _walk_condition(node, automation_id, edges, predicate="LOCAL_GUARD")
