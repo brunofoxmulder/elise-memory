@@ -5,14 +5,18 @@ slug: elise_memory
 init: false
 hassio_api: true
 homeassistant_api: true
+homeassistant: 2026.2.0
+discovery:
+  - mcp
 arch:
   - amd64
 startup: application
 boot: auto
 ports:
-  8099/tcp: 8099
+  8099/tcp: null
 ports_description:
-  8099/tcp: API Élise Memory
+  8099/tcp: API Élise Memory (exposition hôte optionnelle)
+watchdog: http://[HOST]:[PORT:8099]/health
 map:
   - type: data
     read_only: false

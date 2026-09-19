@@ -1,4 +1,4 @@
-#!/usr/bin/with-contenv sh
+#!/usr/bin/with-contenv bashio
 set -eu
 
 CONFIG_PATH=/data/options.json
@@ -27,5 +27,9 @@ export ELISE_MEMORY_SHEET_HOME_ASSISTANT_ID="$(read_option sheet_home_assistant_
 export ELISE_MEMORY_SHEET_INDEX_ID="$(read_option sheet_index_id)"
 export ELISE_MEMORY_SHEET_AUTOMATIONS_ID="$(read_option sheet_automations_id)"
 export ELISE_MEMORY_SHEET_SCRIPTS_ID="$(read_option sheet_scripts_id)"
+
+# Announce the internal MCP endpoint only after the application is listening.
+# Discovery failure is non-fatal and never exposes the port on the host network.
+./discovery &
 
 exec elise-memory

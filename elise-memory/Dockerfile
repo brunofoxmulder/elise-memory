@@ -7,7 +7,9 @@ WORKDIR /opt/elise-memory
 COPY rootfs/ /
 COPY app/ ./
 RUN pip3 install --no-cache-dir --break-system-packages .
-RUN chmod a+x /etc/services.d/elise-memory/run
+RUN chmod a+x \
+    /etc/services.d/elise-memory/run \
+    /etc/services.d/elise-memory/discovery
 
 LABEL io.hass.version="${BUILD_VERSION}" \
       io.hass.type="app" \

@@ -1,0 +1,17 @@
+#!/usr/bin/with-contenv bashio
+# Send the internal MCP endpoint to Home Assistant through Supervisor discovery.
+
+declare config
+
+bashio::log.info "Waiting for Élise Memory MCP before discovery..."
+bashio::net.wait_for 8099
+
+config=$(bashio::var.json \
+    url "http://$(hostname):8099/mcp/" \
+)
+
+if bashio::discovery "mcp" "${config}" > /dev/null; then
+    bashio::log.info "Élise Memory MCP discovery sent to Home Assistant."
+else
+    bashio::log.warning "MCP discovery was not accepted; the app remains available."
+fi
