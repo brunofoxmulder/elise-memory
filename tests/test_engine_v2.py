@@ -535,3 +535,221 @@ def test_r8_document_only_relation_cannot_answer_operational_question():
         "what turns on the bathroom lamp", entities, reconciliation, edges
     )
     assert result == []
+
+
+def test_webhook_trigger_is_preserved_as_a_real_trigger_source():
+    entities = _entities() + [
+        EntityRecord("automation.webhook", "automation", "Webhook task", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Webhook task",
+            """
+alias: Webhook task
+triggers:
+  - trigger: webhook
+    webhook_id: test_hook
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+""",
+            "Validated",
+            30,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "webhook:test_hook"
+        and edge.predicate == "TRIGGERS"
+        and edge.object == "automation.webhook"
+        for edge in graph
+    )
+
+
+def test_wait_template_keeps_referenced_entity_as_wait_relation():
+    entities = _entities() + [
+        EntityRecord("automation.wait_template", "automation", "Wait template task", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Wait template task",
+            """
+alias: Wait template task
+triggers:
+  - trigger: time
+    at: "12:00:00"
+actions:
+  - wait_template: "{{ is_state('binary_sensor.window', 'off') }}"
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+""",
+            "Validated",
+            31,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "binary_sensor.window"
+        and edge.predicate == "WAITS_FOR"
+        and edge.object == "automation.wait_template"
+        for edge in graph
+    )
+
+
+def test_custom_script_service_becomes_a_script_call_not_an_action_on_a_light():
+    entities = _entities() + [
+        EntityRecord("automation.script_call", "automation", "Call announce script", "on"),
+        EntityRecord("script.announce_house", "script", "Announce house", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Call announce script",
+            """
+alias: Call announce script
+triggers:
+  - trigger: time
+    at: "08:00:00"
+actions:
+  - action: script.announce_house
+    data:
+      message: hello
+""",
+            "Validated",
+            32,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "automation.script_call"
+        and edge.predicate == "CALLS_SCRIPT"
+        and edge.object == "script.announce_house"
+        for edge in graph
+    )
+
+
+def test_pyscript_service_becomes_a_pyscript_call():
+    entities = _entities() + [
+        EntityRecord("automation.pyscript_call", "automation", "Call pyscript", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Call pyscript",
+            """
+alias: Call pyscript
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+actions:
+  - action: pyscript.journal_something
+""",
+            "Validated",
+            33,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "automation.pyscript_call"
+        and edge.predicate == "CALLS_PYSCRIPT"
+        and edge.object == "service:pyscript.journal_something"
+        for edge in graph
+    )
+
+
+def test_device_trigger_keeps_device_reference_even_without_entity_mapping():
+    entities = _entities() + [
+        EntityRecord("automation.device_trigger", "automation", "Device trigger", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Device trigger",
+            """
+alias: Device trigger
+triggers:
+  - trigger: device
+    domain: mqtt
+    device_id: 11111111111111111111111111111111
+    type: action
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+""",
+            "Validated",
+            34,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "device_ref:11111111111111111111111111111111"
+        and edge.predicate == "TRIGGERS"
+        and edge.object == "automation.device_trigger"
+        for edge in graph
+    )
+
+
+def test_service_device_target_stays_device_scoped_until_registry_resolution():
+    entities = _entities() + [
+        EntityRecord("automation.device_target", "automation", "Device target service", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Device target service",
+            """
+alias: Device target service
+triggers:
+  - trigger: time
+    at: "10:00:00"
+actions:
+  - action: homeassistant.turn_off
+    target:
+      device_id: 22222222222222222222222222222222
+""",
+            "Validated",
+            35,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "automation.device_target"
+        and edge.predicate == "ACTS_ON"
+        and edge.object == "device_ref:22222222222222222222222222222222"
+        for edge in graph
+    )
+
+
+def test_generic_homeassistant_turn_off_has_semantic_effect():
+    entities = _entities() + [
+        EntityRecord("automation.generic_off", "automation", "Generic off", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Generic off",
+            """
+alias: Generic off
+triggers:
+  - trigger: time
+    at: "10:00:00"
+actions:
+  - action: homeassistant.turn_off
+    target:
+      entity_id: light.entry
+""",
+            "Validated",
+            36,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_automation_chains(
+        "what turns off the entry lamp", entities, reconciliation, graph
+    )
+    assert result[0]["automation_entity_id"] == "automation.generic_off"
+    assert result[0]["effect"] == "turn_off"
