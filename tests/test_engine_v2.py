@@ -2211,3 +2211,73 @@ def test_rex_can_override_weaker_historical_claim_for_meaning():
     assert winner is not None
     assert winner.value == "entrance lighting"
     assert winner.source == SourceKind.REX
+
+
+def test_rex_cannot_replace_exact_registry_binding():
+    opaque = "0123456789abcdef0123456789abcdef"
+    edges = [
+        GraphEdge(
+            "automation.toothbrush",
+            "ACTS_ON",
+            f"registry_ref:{opaque}",
+            SourceKind.AUTOMATION_PRODUCTION,
+        )
+    ]
+    entities = [
+        EntityRecord("automation.toothbrush", "automation", "Charge toothbrush", "on"),
+        EntityRecord("switch.toothbrush", "switch", "Toothbrush socket", "off"),
+        EntityRecord("switch.other", "switch", "Other socket", "off"),
+    ]
+    resolved = resolve_registry_edges(
+        edges,
+        entities,
+        [RegistryBinding(opaque, "switch.toothbrush", "ha_registry_readonly")],
+    )
+    assert resolved[0].object == "switch.toothbrush"
+
+    rex_claim = SourceFact(
+        f"registry_ref:{opaque}",
+        FactType.RELATION,
+        "switch.other",
+        SourceKind.REX,
+        evidence="rex:field_note",
+    )
+    exact_claim = SourceFact(
+        f"registry_ref:{opaque}",
+        FactType.RELATION,
+        resolved[0].object,
+        SourceKind.AUTOMATION_PRODUCTION,
+        evidence="ha_registry_readonly",
+    )
+    winner = choose_preferred_fact([rex_claim, exact_claim])
+    assert winner is not None
+    assert winner.value == "switch.toothbrush"
+    assert winner.source == SourceKind.AUTOMATION_PRODUCTION
+
+
+def test_rex_cannot_make_unresolved_registry_reference_operational():
+    opaque = "fedcba9876543210fedcba9876543210"
+    edges = [
+        GraphEdge(
+            "automation.toothbrush",
+            "ACTS_ON",
+            f"registry_ref:{opaque}",
+            SourceKind.AUTOMATION_PRODUCTION,
+        )
+    ]
+    entities = [
+        EntityRecord("automation.toothbrush", "automation", "Charge toothbrush", "on"),
+        EntityRecord("switch.toothbrush", "switch", "Toothbrush socket", "off"),
+    ]
+    unresolved = resolve_registry_edges(edges, entities, [])
+    assert unresolved[0].object == f"registry_ref:{opaque}"
+
+    rex_claim = SourceFact(
+        f"registry_ref:{opaque}",
+        FactType.RELATION,
+        "switch.toothbrush",
+        SourceKind.REX,
+        evidence="rex:guess",
+    )
+    assert choose_preferred_fact([rex_claim]).source == SourceKind.REX
+    assert unresolved[0].object != rex_claim.value
