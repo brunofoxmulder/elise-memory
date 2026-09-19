@@ -1,0 +1,33 @@
+name: Élise Memory
+description: Mémoire locale déterministe pour Home Assistant
+version: "0.1.0-dev.12"
+slug: elise_memory
+init: false
+hassio_api: true
+homeassistant_api: true
+arch:
+  - amd64
+startup: application
+boot: auto
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: API Élise Memory
+map:
+  - type: data
+    read_only: false
+  - type: addon_config
+    read_only: true
+    path: /config
+options:
+  sync_enabled: false
+  sheet_home_assistant_id: ""
+  sheet_index_id: ""
+  sheet_automations_id: ""
+  sheet_scripts_id: ""
+schema:
+  sync_enabled: bool
+  sheet_home_assistant_id: str
+  sheet_index_id: str
+  sheet_automations_id: str
+  sheet_scripts_id: str

@@ -1,25 +1,36 @@
 # Élise Memory
 
-Mémoire locale déterministe pour le projet Maison Cognitive.
+Mémoire locale déterministe pour Home Assistant.
 
-## Statut
+## Sécurité et confidentialité
 
-Prototype isolé — aucune écriture dans Home Assistant ou Google Drive.
+- aucun identifiant de classeur Google n'est embarqué dans le code ;
+- aucun compte de service, jeton ou secret Google n'est stocké dans le dépôt ;
+- les identifiants de classeurs sont fournis uniquement par la configuration privée de l'App ;
+- le compte de service est lu depuis le fichier local `/config/google-service-account.json` ;
+- l'accès Google utilise uniquement l'API Sheets en lecture seule ;
+- les états de santé n'exposent ni chemin de secret ni identifiant de classeur.
 
-## Principes
+## Fonctionnement
 
-- une seule application ;
 - mémoire `house` structurée en couches **canonique** et **REX** ;
 - mémoire `temporal` pour le contexte courant ;
-- persistance locale SQLite sous `/data`;
-- API HTTP locale et minimale ;
+- persistance SQLite sous `/data` ;
+- API HTTP locale ;
 - aucune dépendance à un LLM ;
 - Home Assistant reste la vérité du temps réel ;
-- Google Drive reste le jumeau numérique documentaire canonique ;
-- provenance, validation et historique de supersession conservés.
+- la synchronisation Google vers SQLite est atomique : toutes les sources requises sont lues et compilées avant publication.
 
-La base locale n'est pas une copie exhaustive des Sheets : elle compile seulement les connaissances utiles à la compréhension de la maison. Les historiques, tests, archives, YAML/code bruts et données de mesure ne sont pas injectés par défaut.
+## Synchronisation Google
 
-Voir `docs/HOUSE_KNOWLEDGE.md` pour les sources retenues, les exclusions, le REX et les garanties prévues pour la synchronisation nocturne.
+La synchronisation est désactivée par défaut. L'App monte son dossier `addon_config`
+explicitement sur `/config` et attend un fichier nommé
+`google-service-account.json`.
 
-Le raccordement à Élise Live, le déploiement Home Assistant et toute promotion REX vers Google Drive restent des étapes séparées soumises à validation explicite.
+Si la synchronisation est activée mais que le fichier de credentials, les IDs de
+classeurs ou les credentials eux-mêmes sont invalides, **l'App reste démarrée**.
+La synchronisation passe en état non prêt/échec et aucune publication canonique
+partielle n'est effectuée.
+
+Le raccordement à un agent conversationnel/Assist est une étape séparée et ne
+doit être activé qu'après validation terrain de la chaîne Google → SQLite.

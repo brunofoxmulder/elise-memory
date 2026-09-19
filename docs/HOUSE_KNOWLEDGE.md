@@ -47,3 +47,54 @@ Une compilation canonique complète est publiée en une transaction SQLite. Avan
 - une erreur laisse intégralement en place la dernière vue valide.
 
 Lors d'une publication valide, les contenus inchangés ne sont pas dupliqués, les contenus modifiés supersèdent leur version précédente et les connaissances disparues de la source deviennent inactives sans effacement historique. La couche REX n'est jamais modifiée par une synchronisation canonique.
+
+
+## Accès Google Sheets
+
+Le lecteur nocturne utilise l'API Google Sheets v4 avec le scope strict `spreadsheets.readonly`. Il n'expose aucune méthode d'écriture et n'effectue aucune découverte générale de Google Drive : les identifiants de classeurs, noms d'onglets et plages autorisées sont explicitement enregistrés dans le code.
+
+Pour une exécution autonome sur HAOS, l'option préparée est un compte de service dédié dont le fichier d'identifiants est fourni au conteneur de manière sécurisée. Les seuls classeurs nécessaires devront être partagés avec ce compte. La clé privée ne doit jamais être placée dans GitHub, dans SQLite, dans les logs ou dans le jumeau numérique.
+
+Google recommande les identifiants éphémères lorsqu'ils sont disponibles et avertit du risque des clés de compte de service. HAOS n'étant pas une ressource Google Cloud à laquelle on peut simplement attacher un compte de service, le choix opérationnel final des identifiants reste à valider avant déploiement. Le code actuel prépare le lecteur mais ne configure ni ne déploie aucun secret.
+
+
+## Orchestrateur de synchronisation
+
+L'orchestrateur lit d'abord l'ensemble des sources obligatoires et compile toutes les connaissances en mémoire. Aucune mutation SQLite n'est faite pendant cette phase. Une panne Google ou une dérive de schéma avant publication laisse donc la vue canonique précédente intacte.
+
+Une fois les cinq sources lues et compilées, le snapshot canonique **et** la vue des relations fonctionnelles sont publiés dans une seule transaction SQLite. Une erreur sur les relations annule donc aussi les modifications de connaissances. Le rapport de synchronisation expose le nombre de lignes source par classeur logique, le nombre de connaissances compilées, les changements, désactivations et relations.
+
+Le déclenchement nocturne n'est pas encore activé : l'heure et le mécanisme d'ordonnancement restent séparés de la logique de synchronisation afin de pouvoir tester celle-ci sans modifier Home Assistant.
+
+
+## Scheduler et santé
+
+Un scheduler local configurable est présent mais **désactivé par défaut**. Il sait calculer la prochaine exécution quotidienne dans un fuseau IANA et gère naturellement le changement de jour. L'heure `03:00` présente dans la valeur par défaut du composant est une valeur technique inactive, pas une décision de déploiement ; aucune planification n'est activée tant que la configuration finale n'est pas validée.
+
+L'API expose `GET /v1/sync/health`, qui ne contacte pas Google et retourne uniquement l'état local : dernière synchronisation enregistrée, nombre de connaissances canoniques courantes, nombre de relations courantes et statistiques de la dernière synchronisation réussie par source.
+
+Le scheduler est raccordé au cycle de vie de l'application et au lecteur Google, mais reste désactivé par défaut. Son activation effective et les identifiants Google restent une étape de déploiement séparée.
+
+
+## Activation de déploiement
+
+Le raccordement au cycle de vie de l'application est maintenant présent, mais reste fail-safe et inactif par défaut. Variables prévues :
+- `ELISE_MEMORY_SYNC_ENABLED=true` : activation explicite ;
+- `ELISE_MEMORY_GOOGLE_CREDENTIALS` : chemin local du secret de compte de service, obligatoire si activé ;
+- `ELISE_MEMORY_SYNC_HOUR`, `ELISE_MEMORY_SYNC_MINUTE`, `ELISE_MEMORY_SYNC_TIMEZONE` : horaire configurable.
+
+Sans activation explicite, aucun client Google n'est construit et aucun scheduler n'est lancé. Si l'activation est demandée sans identifiants, le démarrage échoue explicitement plutôt que de fonctionner dans un état ambigu. Aucun secret n'est inclus dans le dépôt.
+
+
+### Revue finale dev8
+
+La revue de cohérence a identifié puis corrigé un défaut d'observabilité : une synchronisation échouée avant la transaction protégeait bien la mémoire précédente, mais son échec n'apparaissait pas dans `/v1/sync/health`. Le runtime enregistre maintenant un run `failed` séparé avec une erreur bornée, sans modifier les connaissances canoniques. L'ancien writer de relations non transactionnel a été supprimé afin qu'il n'existe plus de chemin alternatif contournant la publication atomique.
+
+
+### Validation automatisée dev8
+
+La branche `dev8-house-knowledge-schema` est validée par les deux workflows GitHub. La dernière validation observée après ajout de la recherche locale House Memory et du bilan par source conclut `success` sur les deux workflows.
+
+La recherche conversationnelle reste entièrement locale : `GET /v1/knowledge/search` interroge SQLite et retourne des connaissances actives ainsi que les relations fonctionnelles correspondantes, sans contacter Google Drive ni Home Assistant. Les réponses sont bornées afin de préserver un contexte compact.
+
+Cette validation automatisée ne vaut pas déploiement terrain : Google, le scheduler et Home Assistant restent non activés tant que le déploiement n'a pas été explicitement validé.
