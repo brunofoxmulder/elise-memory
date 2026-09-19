@@ -23,6 +23,7 @@ from elise_memory.engine_v2 import (
     dependency_edges,
     reconcile_automations,
     reconcile_business_functions,
+    registry_bindings_from_entries,
     r8_edges,
     r8_relations_from_rows,
     resolve_entities,
@@ -2027,3 +2028,87 @@ def test_script_catalog_alone_cannot_create_an_operational_answer():
     )
     assert evidence["operational_answer_available"] is False
     assert evidence["layers"]["scripts"] == []
+
+
+
+def test_entity_registry_dump_builds_exact_current_bindings_only():
+    entities = [
+        EntityRecord("binary_sensor.window", "binary_sensor", "Window", "off"),
+        EntityRecord("switch.socket", "switch", "Socket", "off"),
+    ]
+    entries = [
+        {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "entity_id": "binary_sensor.window",
+            "device_id": "11111111111111111111111111111111",
+        },
+        {
+            "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "entity_id": "switch.socket",
+            "device_id": "22222222222222222222222222222222",
+        },
+        {
+            "id": "cccccccccccccccccccccccccccccccc",
+            "entity_id": "sensor.stale_not_current",
+        },
+        {
+            "id": "not-an-opaque-id",
+            "entity_id": "switch.socket",
+        },
+    ]
+    bindings = registry_bindings_from_entries(entries, entities)
+    assert [(x.registry_ref, x.entity_id) for x in bindings] == [
+        ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "binary_sensor.window"),
+        ("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "switch.socket"),
+    ]
+    assert {x.source for x in bindings} == {"ha_entity_registry_readonly"}
+
+
+def test_entity_registry_binding_then_resolves_real_device_style_trigger_and_action():
+    entities = _entities() + [
+        EntityRecord("automation.registry_roundtrip", "automation", "Registry roundtrip", "on"),
+        EntityRecord("switch.device_socket", "switch", "Device socket", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Registry roundtrip",
+            """
+alias: Registry roundtrip
+triggers:
+  - trigger: device
+    device_id: 11111111111111111111111111111111
+    entity_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    domain: binary_sensor
+    type: opened
+actions:
+  - type: turn_on
+    device_id: 22222222222222222222222222222222
+    entity_id: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    domain: switch
+""",
+            "Validated",
+            90,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    bindings = registry_bindings_from_entries(
+        [
+            {"id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "entity_id": "binary_sensor.window"},
+            {"id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "entity_id": "switch.device_socket"},
+        ],
+        entities,
+    )
+    resolved = resolve_registry_edges(graph, entities, bindings)
+    result = retrieve_triggered_chains(
+        "what happens when the lounge window opens",
+        entities,
+        reconciliation,
+        resolved,
+    )
+    assert any(
+        item["automation_entity_id"] == "automation.registry_roundtrip"
+        and item["target"] == "switch.device_socket"
+        and item["effect"] == "turn_on"
+        for item in result
+    )
