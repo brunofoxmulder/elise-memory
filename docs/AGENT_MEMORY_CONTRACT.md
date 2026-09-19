@@ -37,6 +37,17 @@ seule et retourne le même contrat borné que l'API HTTP. Le port hôte de l'app
 plus exposé par défaut ; une éventuelle exposition doit être décidée et validée lors
 de la recette réseau.
 
+L'app annonce également le service `mcp` par le mécanisme de découverte Supervisor.
+L'URL annoncée est construite à partir du nom interne réel du conteneur :
+`http://<hostname>:8099/mcp/`. Home Assistant peut ainsi proposer l'intégration MCP
+sans port LAN, adresse IP fixe ni intégration personnalisée. L'utilisateur doit
+toujours confirmer l'ajout dans Home Assistant ; l'annonce seule ne l'active pas.
+
+La sécurité du candidat repose sur trois frontières cumulatives : port hôte désactivé,
+réseau interne Supervisor et unique outil MCP en lecture seule. OAuth n'est pas ajouté
+à ce stade, car l'intégration MCP officielle accepte un serveur local sans
+authentification et la voie d'écriture n'est pas publiée comme outil MCP.
+
 Réponse garantie :
 
 - `advice_only=true` ;
