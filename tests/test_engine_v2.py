@@ -13,6 +13,9 @@ from elise_memory.engine_v2 import (
     FactType,
     SourceFact,
     SourceKind,
+    script_context_for_services,
+    script_catalog_from_rows,
+    ScriptCatalogEntry,
     audit_operational_model,
     build_operational_graph,
     business_context_for_entity,
@@ -1931,3 +1934,96 @@ actions: []
     audit = audit_operational_model(entities, docs)
     assert "automation.guard_only" in audit.active_without_effect_edge
     assert "automation.guard_only" not in audit.active_without_trigger_edge
+
+
+
+def test_script_catalog_enriches_only_a_service_already_proved_by_production():
+    header = [
+        "ID", "Nom du fichier", "Service HA exposé", "Domaine", "Rôle",
+        "Statut", "Version actuelle", "Version précédente", "Automatisation liée",
+        "Onglets lus", "Onglets écrits", "Entités HA utilisées", "Prompt IA",
+        "Chemin HA", "Dernière modification", "Risques / points sensibles",
+        "Commentaires",
+    ]
+    rows = [[
+        "S1", "worker.py", "pyscript.worker ; pyscript.worker_manual",
+        "Maison", "Explains the worker role", "Production validée", "v1", "",
+        "Main task", "", "", "sensor.one ; switch.two", "", "/config/pyscript/worker.py",
+        "2026-09-19", "none", "catalogue note",
+    ]]
+    catalog = script_catalog_from_rows(header, rows)
+    result = script_context_for_services(["service:pyscript.worker"], catalog)
+    assert len(result) == 1
+    assert result[0]["script_id"] == "S1"
+    assert result[0]["services"] == ["pyscript.worker"]
+    assert result[0]["role"] == "Explains the worker role"
+    assert result[0]["entities"] == ["sensor.one", "switch.two"]
+
+
+def test_script_catalog_does_not_match_similar_unproved_service_name():
+    item = ScriptCatalogEntry(
+        "S1", "worker.py", ("pyscript.worker",), "Maison", "role",
+        "Production", "v1", "Task", (), "2026-09-19", None, None,
+    )
+    assert script_context_for_services(["service:pyscript.worker_old"], [item]) == []
+
+
+def test_evidence_assembly_attaches_called_pyscript_after_operational_core_only():
+    entities = _entities() + [
+        EntityRecord("automation.pyscript_task2", "automation", "Pyscript task 2", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Pyscript task 2",
+            """
+alias: Pyscript task 2
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: pyscript.worker
+""",
+            "Validated",
+            80,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    catalog = [
+        ScriptCatalogEntry(
+            "S1", "worker.py", ("pyscript.worker",), "Maison",
+            "Does the documented worker job", "Production validée", "v1",
+            "Pyscript task 2", ("sensor.one",), "2026-09-19", None, None,
+        )
+    ]
+    evidence = assemble_evidence_context(
+        "Pyscript task 2",
+        entities,
+        reconciliation,
+        graph,
+        script_catalog=catalog,
+    )
+    assert evidence["operational"]["mode"] == "automation_behavior"
+    assert evidence["layers"]["scripts"][0]["services"] == ["pyscript.worker"]
+    assert evidence["layers"]["scripts"][0]["role"] == "Does the documented worker job"
+
+
+def test_script_catalog_alone_cannot_create_an_operational_answer():
+    entities, reconciliation, _ = _engine()
+    catalog = [
+        ScriptCatalogEntry(
+            "S1", "worker.py", ("pyscript.worker",), "Maison", "role",
+            "Production validée", "v1", "No matching automation", (),
+            "2026-09-19", None, None,
+        )
+    ]
+    evidence = assemble_evidence_context(
+        "what turns on a nonexistent lamp",
+        entities,
+        reconciliation,
+        [],
+        script_catalog=catalog,
+    )
+    assert evidence["operational_answer_available"] is False
+    assert evidence["layers"]["scripts"] == []
