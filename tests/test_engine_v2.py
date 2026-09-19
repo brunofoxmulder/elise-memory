@@ -2178,3 +2178,36 @@ actions:
     expanded = extend_graph_with_operational_scripts(base, [])
     assert expanded == base
     assert not any(x.predicate == "ACTS_ON" and x.object == "light.proved" for x in expanded)
+
+
+def test_rex_cannot_override_exact_ha_current_identity_or_state():
+    facts = [
+        SourceFact("light.entry", FactType.CURRENT_STATE, "off", SourceKind.HA_CURRENT, evidence="ha_state_readonly"),
+        SourceFact("light.entry", FactType.CURRENT_STATE, "on", SourceKind.REX, evidence="rex:user_correction"),
+    ]
+    winner = choose_preferred_fact(facts)
+    assert winner is not None
+    assert winner.value == "off"
+    assert winner.source == SourceKind.HA_CURRENT
+
+
+def test_rex_cannot_override_proved_production_behavior():
+    facts = [
+        SourceFact("automation.entry_main", FactType.BEHAVIOR, "motion turns entry lamp on", SourceKind.AUTOMATION_PRODUCTION, evidence="production_yaml"),
+        SourceFact("automation.entry_main", FactType.BEHAVIOR, "window turns entry lamp on", SourceKind.REX, evidence="rex:field_note"),
+    ]
+    winner = choose_preferred_fact(facts)
+    assert winner is not None
+    assert winner.value == "motion turns entry lamp on"
+    assert winner.source == SourceKind.AUTOMATION_PRODUCTION
+
+
+def test_rex_can_override_weaker_historical_claim_for_meaning():
+    facts = [
+        SourceFact("object:entry", FactType.MEANING, "old label", SourceKind.HISTORY, evidence="journal:old"),
+        SourceFact("object:entry", FactType.MEANING, "entrance lighting", SourceKind.REX, evidence="rex:validated"),
+    ]
+    winner = choose_preferred_fact(facts)
+    assert winner is not None
+    assert winner.value == "entrance lighting"
+    assert winner.source == SourceKind.REX
