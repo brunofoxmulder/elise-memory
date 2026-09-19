@@ -7,6 +7,7 @@ from elise_memory.engine_v2 import (
     EntityRecord,
     GraphEdge,
     ObjectDependencyDoc,
+    OperationalScript,
     R8RelationDoc,
     ReconciledBusinessFunction,
     RegistryBinding,
@@ -18,6 +19,7 @@ from elise_memory.engine_v2 import (
     ScriptCatalogEntry,
     audit_operational_model,
     build_operational_graph,
+    extend_graph_with_operational_scripts,
     business_context_for_entity,
     choose_preferred_fact,
     dependency_edges,
@@ -2112,3 +2114,67 @@ actions:
         and item["effect"] == "turn_on"
         for item in result
     )
+
+
+def test_proved_script_expansion_is_fail_closed_and_requires_executable_proof():
+    entities = _entities() + [
+        EntityRecord("automation.via_script", "automation", "Via script", "on"),
+        EntityRecord("light.proved", "light", "Lampe prouvée", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc("Via script", """
+alias: Via script
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: script.allume_lampe_prouvee
+""", "Validated", 200)
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    base = build_operational_graph(reconciliation)
+    assert any(x.predicate == "CALLS_SCRIPT" and x.object == "script.allume_lampe_prouvee" for x in base)
+    assert not any(x.predicate == "ACTS_ON" and x.object == "light.proved" for x in base)
+
+    expanded = extend_graph_with_operational_scripts(
+        base,
+        [OperationalScript(
+            "script.allume_lampe_prouvee",
+            """
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.proved
+""",
+            "ha_script_config_readonly",
+        )],
+    )
+    script_node = "operational_script:script.allume_lampe_prouvee"
+    assert any(x.predicate == "CALLS_PROVED_SCRIPT" and x.object == script_node for x in expanded)
+    action = next(x for x in expanded if x.subject == script_node and x.predicate == "ACTS_ON" and x.object == "light.proved")
+    assert action.source == SourceKind.AUTOMATION_PRODUCTION
+    assert action.detail and "ha_script_config_readonly" in action.detail
+
+
+def test_unproved_script_catalog_cannot_create_operational_action():
+    entities = _entities() + [
+        EntityRecord("automation.via_script", "automation", "Via script", "on"),
+        EntityRecord("light.proved", "light", "Lampe prouvée", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc("Via script", """
+alias: Via script
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: script.allume_lampe_prouvee
+""", "Validated", 201)
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    base = build_operational_graph(reconciliation)
+    expanded = extend_graph_with_operational_scripts(base, [])
+    assert expanded == base
+    assert not any(x.predicate == "ACTS_ON" and x.object == "light.proved" for x in expanded)
