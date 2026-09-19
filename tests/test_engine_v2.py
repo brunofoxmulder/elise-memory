@@ -888,3 +888,92 @@ def test_french_unlock_verb_is_removed_from_object_identity_and_hints_lock():
     ]
     result = resolve_entities("quand je deverrouille la porte", entities)
     assert result[0][0].entity_id == "lock.porte_dentree"
+
+
+
+def test_wait_after_turn_on_is_not_attached_to_the_earlier_turn_on_effect():
+    entities, reconciliation, graph = _engine()
+    result = retrieve_automation_chains(
+        "what turns on the entry lamp", entities, reconciliation, graph
+    )
+    main = next(item for item in result if item["automation_entity_id"] == "automation.entry_main")
+    assert all(item["predicate"] != "WAITS_FOR" for item in main["context"])
+
+
+def test_wait_before_turn_off_is_attached_to_the_later_turn_off_effect():
+    entities, reconciliation, graph = _engine()
+    result = retrieve_automation_chains(
+        "what turns off the entry lamp", entities, reconciliation, graph
+    )
+    main = next(item for item in result if item["automation_entity_id"] == "automation.entry_main")
+    assert any(item["predicate"] == "WAITS_FOR" for item in main["context"])
+
+
+def test_choose_branch_guards_do_not_leak_between_opposite_charge_actions():
+    entities = _entities() + [
+        EntityRecord("automation.charge", "automation", "Phone charge", "on"),
+        EntityRecord("switch.charger", "switch", "Phone charger", "off"),
+        EntityRecord("sensor.battery", "sensor", "Phone battery", "80"),
+        EntityRecord("binary_sensor.offpeak", "binary_sensor", "Off peak", "on"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Phone charge",
+            """
+alias: Phone charge
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.offpeak
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: binary_sensor.offpeak
+    state: "on"
+actions:
+  - choose:
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.battery
+            below: 95
+        sequence:
+          - delay: "00:30:00"
+          - action: switch.turn_on
+            target:
+              entity_id: switch.charger
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.battery
+            above: 99
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: switch.charger
+""",
+            "Validated",
+            50,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    turn_on = retrieve_automation_chains(
+        "what turns on the phone charger", entities, reconciliation, graph
+    )
+    charge_on = next(item for item in turn_on if item["automation_entity_id"] == "automation.charge")
+    local_on = [
+        item["detail"] for item in charge_on["context"]
+        if item["predicate"] == "LOCAL_GUARD"
+    ]
+    assert any(detail.get("below") == 95 for detail in local_on)
+    assert all(detail.get("above") != 99 for detail in local_on)
+
+    turn_off = retrieve_automation_chains(
+        "what turns off the phone charger", entities, reconciliation, graph
+    )
+    charge_off = next(item for item in turn_off if item["automation_entity_id"] == "automation.charge")
+    local_off = [
+        item["detail"] for item in charge_off["context"]
+        if item["predicate"] == "LOCAL_GUARD"
+    ]
+    assert any(detail.get("above") == 99 for detail in local_off)
+    assert all(detail.get("below") != 95 for detail in local_off)
