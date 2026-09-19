@@ -20,7 +20,9 @@ from elise_memory.engine_v2 import (
     r8_relations_from_rows,
     resolve_entities,
     resolve_registry_edges,
+    retrieve_automation_behavior,
     retrieve_automation_chains,
+    retrieve_operational_context,
     retrieve_triggered_chains,
 )
 
@@ -1545,3 +1547,195 @@ def test_french_charge_word_resolves_switch_not_power_sensor():
     ]
     result = resolve_entities("comment fonctionne la charge de l'aspirateur ?", entities)
     assert result[0][0].entity_id == "switch.prise_aspirateur"
+
+
+
+def test_automation_behavior_query_returns_full_main_charge_flow():
+    entities = _entities() + [
+        EntityRecord("automation.charge_main", "automation", "Charge aspirateur", "on"),
+        EntityRecord("automation.charge_safety", "automation", "Charge aspirateur arrêt sécurité", "on"),
+        EntityRecord("switch.vacuum", "switch", "Prise aspirateur", "off"),
+        EntityRecord("sensor.vacuum_power", "sensor", "Prise aspirateur Puissance", "0"),
+        EntityRecord("binary_sensor.docked", "binary_sensor", "Aspirateur sur base", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Charge aspirateur",
+            """
+alias: Charge aspirateur
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.docked
+    to: "on"
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.vacuum
+  - delay:
+      minutes: 2
+  - choose:
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.vacuum_power
+            above: 1
+        sequence:
+          - wait_for_trigger:
+              - trigger: numeric_state
+                entity_id: sensor.vacuum_power
+                below: 1
+                for:
+                  minutes: 2
+          - action: switch.turn_off
+            target:
+              entity_id: switch.vacuum
+    default:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.vacuum
+""",
+            "Validée",
+            90,
+        ),
+        AutomationDoc(
+            "Charge aspirateur arrêt sécurité",
+            """
+alias: Charge aspirateur arrêt sécurité
+triggers:
+  - trigger: time
+    at: "06:00:00"
+actions:
+  - action: switch.turn_off
+    target:
+      entity_id: switch.vacuum
+""",
+            "Validée",
+            91,
+        ),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_automation_behavior("comment fonctionne la charge aspirateur ?", reconciliation, graph)
+    assert [x["automation_entity_id"] for x in result] == ["automation.charge_main"]
+    item = result[0]
+    assert {x["object"] for x in item["actions"]} == {"switch.vacuum"}
+    assert {json.loads(json.dumps(x["detail"])).get("effect") for x in item["actions"]} == {
+        "turn_on", "turn_off"
+    }
+    assert any(x["subject"] == "binary_sensor.docked" for x in item["triggers"])
+    assert any(x["subject"] == "sensor.vacuum_power" for x in item["waits"])
+
+
+def test_operational_router_uses_trigger_mode_for_quand_question():
+    entities = [
+        EntityRecord("automation.volet", "automation", "Ouverture volet salon par ouverture fenêtre", "on"),
+        EntityRecord("binary_sensor.fenetre", "binary_sensor", "Fenêtre salon", "off"),
+        EntityRecord("cover.volet", "cover", "Volet salon", "closed"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Ouverture volet salon par ouverture fenêtre",
+            """
+alias: Ouverture volet salon par ouverture fenêtre
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.fenetre
+    to: "on"
+actions:
+  - action: cover.open_cover
+    target:
+      entity_id: cover.volet
+""",
+            "Validée",
+            92,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_operational_context(
+        "que se passe-t-il quand j'ouvre la fenêtre salon ?",
+        entities, reconciliation, graph
+    )
+    assert result["mode"] == "trigger_to_effect"
+    assert result["results"][0]["target"] == "cover.volet"
+
+
+def test_operational_router_uses_automation_behavior_for_named_function():
+    entities = _entities() + [
+        EntityRecord("automation.charge_main", "automation", "Charge aspirateur", "on"),
+        EntityRecord("switch.vacuum", "switch", "Prise aspirateur", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Charge aspirateur",
+            """
+alias: Charge aspirateur
+triggers:
+  - trigger: time
+    at: "01:00:00"
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.vacuum
+""",
+            "Validée",
+            93,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_operational_context(
+        "comment fonctionne la charge aspirateur ?",
+        entities, reconciliation, graph
+    )
+    assert result["mode"] == "automation_behavior"
+    assert result["results"][0]["automation_entity_id"] == "automation.charge_main"
+
+
+def test_operational_router_keeps_target_mode_for_generic_volet_question():
+    entities = [
+        EntityRecord("automation.open_volet", "automation", "Ouverture volet salon", "on"),
+        EntityRecord("automation.close_volet", "automation", "Fermeture volet salon", "on"),
+        EntityRecord("cover.volet", "cover", "Volet salon", "open"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Ouverture volet salon",
+            """
+alias: Ouverture volet salon
+triggers:
+  - trigger: time
+    at: "08:00:00"
+actions:
+  - action: cover.open_cover
+    target:
+      entity_id: cover.volet
+""",
+            "Validée",
+            94,
+        ),
+        AutomationDoc(
+            "Fermeture volet salon",
+            """
+alias: Fermeture volet salon
+triggers:
+  - trigger: time
+    at: "22:00:00"
+actions:
+  - action: cover.close_cover
+    target:
+      entity_id: cover.volet
+""",
+            "Validée",
+            95,
+        ),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_operational_context(
+        "comment fonctionne le volet salon ?",
+        entities, reconciliation, graph
+    )
+    assert result["mode"] == "target_to_automation"
+    assert {x["automation_entity_id"] for x in result["results"]} == {
+        "automation.open_volet", "automation.close_volet"
+    }
