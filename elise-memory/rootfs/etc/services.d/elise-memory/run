@@ -1,5 +1,8 @@
 #!/usr/bin/with-contenv bashio
 set -e
+
+CONFIG_PATH=/data/options.json
+
 export ELISE_MEMORY_DB=/data/elise_memory.sqlite3
 export ELISE_MEMORY_SYNC_ENABLED="$(bashio::config 'sync_enabled')"
 export ELISE_MEMORY_GOOGLE_CREDENTIALS=/config/google-service-account.json
@@ -7,4 +10,5 @@ export ELISE_MEMORY_SHEET_HOME_ASSISTANT_ID="$(bashio::config 'sheet_home_assist
 export ELISE_MEMORY_SHEET_INDEX_ID="$(bashio::config 'sheet_index_id')"
 export ELISE_MEMORY_SHEET_AUTOMATIONS_ID="$(bashio::config 'sheet_automations_id')"
 export ELISE_MEMORY_SHEET_SCRIPTS_ID="$(bashio::config 'sheet_scripts_id')"
+
 exec elise-memory
