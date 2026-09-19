@@ -37,12 +37,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the actual Home Assistant app image
         run: |
-          docker build             --build-arg BUILD_VERSION=0.1.0-dev.13             --build-arg BUILD_ARCH=amd64             -t elise-memory-dev13 ./elise-memory
+          docker build \
+            --build-arg BUILD_VERSION=0.1.0-dev.13 \
+            --build-arg BUILD_ARCH=amd64 \
+            -t elise-memory-dev13 ./elise-memory
       - name: Smoke test with sync disabled
         run: |
           mkdir -p .ci/data-disabled .ci/config-disabled
           printf '%s' '{"sync_enabled":false,"sheet_home_assistant_id":"","sheet_index_id":"","sheet_automations_id":"","sheet_scripts_id":""}' > .ci/data-disabled/options.json
-          docker run -d --name elise-memory-disabled -p 18099:8099             -v "$PWD/.ci/data-disabled:/data"             -v "$PWD/.ci/config-disabled:/config:ro"             elise-memory-dev13
+          docker run -d --name elise-memory-disabled -p 18099:8099 \
+            -v "$PWD/.ci/data-disabled:/data" \
+            -v "$PWD/.ci/config-disabled:/config:ro" \
+            elise-memory-dev13
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:18099/health > .ci/health-disabled.json && break
             sleep 1
@@ -53,11 +59,38 @@ jobs:
           assert data == {"status":"ok","mode":"isolated","version":"0.1.0-dev.13","sync":"disabled"}, data
           PY
           docker rm -f elise-memory-disabled
+      - name: Smoke test mounted credential is visible
+        run: |
+          mkdir -p .ci/data-mounted .ci/config-mounted
+          printf '%s' '{"sync_enabled":false,"sheet_home_assistant_id":"","sheet_index_id":"","sheet_automations_id":"","sheet_scripts_id":""}' > .ci/data-mounted/options.json
+          printf '%s' '{}' > .ci/config-mounted/google-service-account.json
+          chmod 600 .ci/config-mounted/google-service-account.json
+          docker run -d --name elise-memory-mounted -p 18101:8099 \
+            -v "$PWD/.ci/data-mounted:/data" \
+            -v "$PWD/.ci/config-mounted:/config:ro" \
+            elise-memory-dev13
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18101/v1/sync/health > .ci/health-mounted.json && break
+            sleep 1
+          done
+          python - <<'PY'
+          import json
+          data=json.load(open(".ci/health-mounted.json", encoding="utf-8"))
+          runtime=data["runtime"]
+          assert runtime["credentials_present"] is True, data
+          assert runtime["enabled"] is False, data
+          assert runtime["sources_configured"] is False, data
+          assert runtime["ready"] is False, data
+          PY
+          docker rm -f elise-memory-mounted
       - name: Smoke test missing credentials is non-fatal
         run: |
           mkdir -p .ci/data-missing .ci/config-missing
           printf '%s' '{"sync_enabled":true,"sheet_home_assistant_id":"ha","sheet_index_id":"index","sheet_automations_id":"automations","sheet_scripts_id":"scripts"}' > .ci/data-missing/options.json
-          docker run -d --name elise-memory-missing -p 18100:8099             -v "$PWD/.ci/data-missing:/data"             -v "$PWD/.ci/config-missing:/config:ro"             elise-memory-dev13
+          docker run -d --name elise-memory-missing -p 18100:8099 \
+            -v "$PWD/.ci/data-missing:/data" \
+            -v "$PWD/.ci/config-missing:/config:ro" \
+            elise-memory-dev13
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:18100/health > .ci/health-missing.json && break
             sleep 1
