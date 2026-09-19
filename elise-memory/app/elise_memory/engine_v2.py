@@ -765,10 +765,15 @@ def _walk_trigger(
     edges: list[GraphEdge],
     *,
     predicate: str = "TRIGGERS",
+    branch_path: str = "root",
+    step_index: int | None = None,
 ) -> None:
     if isinstance(node, list):
         for item in node:
-            _walk_trigger(item, automation_id, edges, predicate=predicate)
+            _walk_trigger(
+                item, automation_id, edges, predicate=predicate,
+                branch_path=branch_path, step_index=step_index,
+            )
         return
     if not isinstance(node, dict):
         return
@@ -781,6 +786,8 @@ def _walk_trigger(
         below=node.get("below"),
         duration=node.get("for"),
         trigger_id=node.get("id"),
+        branch_path=branch_path,
+        step_index=step_index,
     )
     entity_refs = _entity_refs(node.get("entity_id"))
     for ref in entity_refs:
@@ -796,7 +803,12 @@ def _walk_trigger(
             GraphEdge(
                 device_node, predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(via="device", trigger=node.get("trigger") or node.get("platform")),
+                _detail(
+                    via="device",
+                    trigger=node.get("trigger") or node.get("platform"),
+                    branch_path=branch_path,
+                    step_index=step_index,
+                ),
             )
         )
 
@@ -806,7 +818,10 @@ def _walk_trigger(
             GraphEdge(
                 "sun.sun", predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(event=node.get("event"), offset=node.get("offset")),
+                _detail(
+                    event=node.get("event"), offset=node.get("offset"),
+                    branch_path=branch_path, step_index=step_index,
+                ),
             )
         )
     elif trigger_kind == "time" and node.get("at"):
@@ -821,7 +836,11 @@ def _walk_trigger(
             GraphEdge(
                 "time_pattern", predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(hours=node.get("hours"), minutes=node.get("minutes"), seconds=node.get("seconds")),
+                _detail(
+                    hours=node.get("hours"), minutes=node.get("minutes"),
+                    seconds=node.get("seconds"), branch_path=branch_path,
+                    step_index=step_index,
+                ),
             )
         )
     elif trigger_kind == "event" and node.get("event_type"):
@@ -829,7 +848,11 @@ def _walk_trigger(
             GraphEdge(
                 f"event:{node.get('event_type')}", predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(event_type=node.get("event_type"), event_data=node.get("event_data")),
+                _detail(
+                    event_type=node.get("event_type"),
+                    event_data=node.get("event_data"),
+                    branch_path=branch_path, step_index=step_index,
+                ),
             )
         )
     elif trigger_kind == "webhook" and node.get("webhook_id"):
@@ -837,7 +860,7 @@ def _walk_trigger(
             GraphEdge(
                 f"webhook:{node.get('webhook_id')}", predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(via="webhook"),
+                _detail(via="webhook", branch_path=branch_path, step_index=step_index),
             )
         )
     elif trigger_kind == "homeassistant" and node.get("event"):
@@ -845,7 +868,7 @@ def _walk_trigger(
             GraphEdge(
                 f"homeassistant:{node.get('event')}", predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(via="homeassistant"),
+                _detail(via="homeassistant", branch_path=branch_path, step_index=step_index),
             )
         )
 
@@ -855,7 +878,7 @@ def _walk_trigger(
                 GraphEdge(
                     ref, predicate, automation_id,
                     SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(via="template"),
+                    _detail(via="template", branch_path=branch_path, step_index=step_index),
                 )
             )
 
@@ -866,10 +889,15 @@ def _walk_condition(
     edges: list[GraphEdge],
     *,
     predicate: str = "GUARDS",
+    branch_path: str = "root",
+    expected: bool | None = None,
 ) -> None:
     if isinstance(node, list):
         for item in node:
-            _walk_condition(item, automation_id, edges, predicate=predicate)
+            _walk_condition(
+                item, automation_id, edges, predicate=predicate,
+                branch_path=branch_path, expected=expected,
+            )
         return
     if not isinstance(node, dict):
         return
@@ -883,6 +911,8 @@ def _walk_condition(
         duration=node.get("for"),
         attribute=node.get("attribute"),
         trigger_id=node.get("id"),
+        branch_path=branch_path,
+        expected=expected,
     )
     for ref in _entity_refs(node.get("entity_id")):
         edges.append(
@@ -897,7 +927,10 @@ def _walk_condition(
             GraphEdge(
                 device_node, predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(via="device", condition=condition),
+                _detail(
+                    via="device", condition=condition, branch_path=branch_path,
+                    expected=expected,
+                ),
             )
         )
     if condition == "sun":
@@ -905,10 +938,26 @@ def _walk_condition(
             GraphEdge(
                 "sun.sun", predicate, automation_id,
                 SourceKind.AUTOMATION_PRODUCTION,
-                _detail(after=node.get("after"), before=node.get("before"),
-                        after_offset=node.get("after_offset"), before_offset=node.get("before_offset")),
+                _detail(
+                    after=node.get("after"), before=node.get("before"),
+                    after_offset=node.get("after_offset"),
+                    before_offset=node.get("before_offset"),
+                    branch_path=branch_path, expected=expected,
+                ),
             )
         )
+    elif condition == "trigger" and node.get("id") is not None:
+        for trigger_id in _entity_refs(node.get("id")):
+            edges.append(
+                GraphEdge(
+                    f"trigger_id:{trigger_id}", predicate, automation_id,
+                    SourceKind.AUTOMATION_PRODUCTION,
+                    _detail(
+                        condition="trigger", trigger_id=trigger_id,
+                        branch_path=branch_path, expected=expected,
+                    ),
+                )
+            )
 
     for value in node.values():
         for ref in _template_refs(value):
@@ -916,19 +965,37 @@ def _walk_condition(
                 GraphEdge(
                     ref, predicate, automation_id,
                     SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(via="template"),
+                    _detail(
+                        via="template", branch_path=branch_path, expected=expected,
+                    ),
                 )
             )
 
     for key in ("conditions", "and", "or", "not"):
         if key in node:
-            _walk_condition(node[key], automation_id, edges, predicate=predicate)
+            nested_expected = expected
+            if key == "not" and expected is not None:
+                nested_expected = not expected
+            _walk_condition(
+                node[key], automation_id, edges, predicate=predicate,
+                branch_path=branch_path, expected=nested_expected,
+            )
 
 
-def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None:
+def _walk_actions(
+    node: Any,
+    automation_id: str,
+    edges: list[GraphEdge],
+    *,
+    branch_path: str = "root",
+    step_index: int | None = None,
+) -> None:
     if isinstance(node, list):
-        for item in node:
-            _walk_actions(item, automation_id, edges)
+        for index, item in enumerate(node):
+            _walk_actions(
+                item, automation_id, edges,
+                branch_path=branch_path, step_index=index,
+            )
         return
     if not isinstance(node, dict):
         return
@@ -936,13 +1003,19 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
     if "delay" in node:
         edges.append(
             GraphEdge(
-                automation_id, "BARRIER", f"delay:{json.dumps(node['delay'], sort_keys=True)}",
+                automation_id,
+                "BARRIER",
+                f"delay:{json.dumps(node['delay'], sort_keys=True)}",
                 SourceKind.AUTOMATION_PRODUCTION,
+                _detail(branch_path=branch_path, step_index=step_index, kind="delay"),
             )
         )
 
     if "wait_for_trigger" in node:
-        _walk_trigger(node["wait_for_trigger"], automation_id, edges, predicate="WAITS_FOR")
+        _walk_trigger(
+            node["wait_for_trigger"], automation_id, edges,
+            predicate="WAITS_FOR", branch_path=branch_path, step_index=step_index,
+        )
     if "wait_template" in node:
         template = node.get("wait_template")
         refs = _template_refs(template)
@@ -952,7 +1025,10 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                     GraphEdge(
                         ref, "WAITS_FOR", automation_id,
                         SourceKind.AUTOMATION_PRODUCTION,
-                        _detail(via="wait_template"),
+                        _detail(
+                            via="wait_template", branch_path=branch_path,
+                            step_index=step_index,
+                        ),
                     )
                 )
         else:
@@ -960,7 +1036,10 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                 GraphEdge(
                     automation_id, "BARRIER", "wait_template",
                     SourceKind.AUTOMATION_PRODUCTION,
-                    _detail(template=template),
+                    _detail(
+                        template=template, branch_path=branch_path,
+                        step_index=step_index, kind="wait_template",
+                    ),
                 )
             )
 
@@ -992,6 +1071,8 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
             service=service,
             effect=_effect_for_service(service, data),
             data=data,
+            branch_path=branch_path,
+            step_index=step_index,
         )
         emitted = False
         if predicate in {"CALLS_SCRIPT", "CALLS_PYSCRIPT"} and not target_refs:
@@ -1022,7 +1103,12 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                     GraphEdge(
                         automation_id, predicate, device_node,
                         SourceKind.AUTOMATION_PRODUCTION,
-                        _detail(service=service, effect=_effect_for_service(service, data), via="device_target"),
+                        _detail(
+                            service=service,
+                            effect=_effect_for_service(service, data),
+                            via="device_target", branch_path=branch_path,
+                            step_index=step_index,
+                        ),
                     )
                 )
                 emitted = True
@@ -1033,7 +1119,12 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                     GraphEdge(
                         automation_id, predicate, area_node,
                         SourceKind.AUTOMATION_PRODUCTION,
-                        _detail(service=service, effect=_effect_for_service(service, data), via="area_target"),
+                        _detail(
+                            service=service,
+                            effect=_effect_for_service(service, data),
+                            via="area_target", branch_path=branch_path,
+                            step_index=step_index,
+                        ),
                     )
                 )
                 emitted = True
@@ -1062,7 +1153,8 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                             service=pseudo_service,
                             effect=node.get("type"),
                             device_id=node.get("device_id"),
-                            via="device_action",
+                            via="device_action", branch_path=branch_path,
+                            step_index=step_index,
                         ),
                     )
                 )
@@ -1077,35 +1169,75 @@ def _walk_actions(node: Any, automation_id: str, edges: list[GraphEdge]) -> None
                             service=pseudo_service,
                             effect=node.get("type"),
                             via="device_action_without_entity",
+                            branch_path=branch_path, step_index=step_index,
                         ),
                     )
                 )
 
     if "condition" in node and not (isinstance(service, str) and "." in service):
-        _walk_condition(node, automation_id, edges, predicate="LOCAL_GUARD")
+        _walk_condition(
+            node, automation_id, edges, predicate="LOCAL_GUARD",
+            branch_path=branch_path,
+        )
 
+    location = step_index if step_index is not None else "x"
     if "if" in node:
-        _walk_condition(node.get("if"), automation_id, edges, predicate="LOCAL_GUARD")
-        _walk_actions(node.get("then"), automation_id, edges)
-        _walk_actions(node.get("else"), automation_id, edges)
+        then_path = f"{branch_path}/if@{location}:then"
+        else_path = f"{branch_path}/if@{location}:else"
+        _walk_condition(
+            node.get("if"), automation_id, edges, predicate="LOCAL_GUARD",
+            branch_path=then_path, expected=True,
+        )
+        _walk_actions(node.get("then"), automation_id, edges, branch_path=then_path)
+        if "else" in node:
+            _walk_condition(
+                node.get("if"), automation_id, edges, predicate="LOCAL_GUARD",
+                branch_path=else_path, expected=False,
+            )
+            _walk_actions(node.get("else"), automation_id, edges, branch_path=else_path)
 
     if "choose" in node and isinstance(node["choose"], list):
-        for choice in node["choose"]:
+        for choice_index, choice in enumerate(node["choose"]):
             if not isinstance(choice, dict):
                 continue
-            _walk_condition(choice.get("conditions"), automation_id, edges, predicate="LOCAL_GUARD")
-            _walk_actions(choice.get("sequence"), automation_id, edges)
-    if "default" in node:
-        _walk_actions(node["default"], automation_id, edges)
-    for key in ("sequence", "parallel", "repeat"):
-        if key in node:
-            value = node[key]
-            if key == "repeat" and isinstance(value, dict):
-                _walk_condition(value.get("while"), automation_id, edges, predicate="LOCAL_GUARD")
-                _walk_condition(value.get("until"), automation_id, edges, predicate="LOCAL_GUARD")
-                _walk_actions(value.get("sequence"), automation_id, edges)
-            else:
-                _walk_actions(value, automation_id, edges)
+            choice_path = f"{branch_path}/choose@{location}:{choice_index}"
+            _walk_condition(
+                choice.get("conditions"), automation_id, edges,
+                predicate="LOCAL_GUARD", branch_path=choice_path, expected=True,
+            )
+            _walk_actions(
+                choice.get("sequence"), automation_id, edges,
+                branch_path=choice_path,
+            )
+        if "default" in node:
+            default_path = f"{branch_path}/choose@{location}:default"
+            _walk_actions(node["default"], automation_id, edges, branch_path=default_path)
+    elif "default" in node:
+        _walk_actions(node["default"], automation_id, edges, branch_path=branch_path)
+
+    if "sequence" in node:
+        _walk_actions(node["sequence"], automation_id, edges, branch_path=branch_path)
+    if "parallel" in node:
+        parallel_path = f"{branch_path}/parallel@{location}"
+        _walk_actions(node["parallel"], automation_id, edges, branch_path=parallel_path)
+    if "repeat" in node:
+        value = node["repeat"]
+        repeat_path = f"{branch_path}/repeat@{location}"
+        if isinstance(value, dict):
+            _walk_condition(
+                value.get("while"), automation_id, edges,
+                predicate="LOCAL_GUARD", branch_path=repeat_path, expected=True,
+            )
+            _walk_condition(
+                value.get("until"), automation_id, edges,
+                predicate="LOCAL_GUARD", branch_path=repeat_path, expected=True,
+            )
+            _walk_actions(
+                value.get("sequence"), automation_id, edges,
+                branch_path=repeat_path,
+            )
+        else:
+            _walk_actions(value, automation_id, edges, branch_path=repeat_path)
 
 
 def extract_automation_edges(automation: ReconciledAutomation) -> list[GraphEdge]:
