@@ -1,36 +1,24 @@
 # Élise Memory
 
-Mémoire locale déterministe pour Home Assistant.
+Application Home Assistant de mémoire locale déterministe.
 
-## Sécurité et confidentialité
+## Source unique
 
-- aucun identifiant de classeur Google n'est embarqué dans le code ;
-- aucun compte de service, jeton ou secret Google n'est stocké dans le dépôt ;
-- les identifiants de classeurs sont fournis uniquement par la configuration privée de l'App ;
-- le compte de service est lu depuis le fichier local `/config/google-service-account.json` ;
-- l'accès Google utilise uniquement l'API Sheets en lecture seule ;
-- les états de santé n'exposent ni chemin de secret ni identifiant de classeur.
+Le code réellement livré à Home Assistant se trouve dans `elise-memory/app/`.
+La CI installe et teste **ce même paquet**, puis construit l'image Home Assistant
+et lance des tests HTTP sur le conteneur final.
 
-## Fonctionnement
+## Confidentialité
 
-- mémoire `house` structurée en couches **canonique** et **REX** ;
-- mémoire `temporal` pour le contexte courant ;
-- persistance SQLite sous `/data` ;
-- API HTTP locale ;
-- aucune dépendance à un LLM ;
-- Home Assistant reste la vérité du temps réel ;
-- la synchronisation Google vers SQLite est atomique : toutes les sources requises sont lues et compilées avant publication.
+- aucun ID de Google Sheet n'est embarqué dans le code ;
+- aucun credential, jeton ou secret Google n'est stocké dans le dépôt ;
+- les IDs de classeurs sont des options privées de l'App ;
+- le compte de service est lu depuis `/config/google-service-account.json` ;
+- Google Sheets est utilisé en lecture seule ;
+- l'API de santé n'expose ni ID, ni secret, ni chemin utilisateur.
 
-## Synchronisation Google
+## Robustesse
 
-La synchronisation est désactivée par défaut. L'App monte son dossier `addon_config`
-explicitement sur `/config` et attend un fichier nommé
-`google-service-account.json`.
-
-Si la synchronisation est activée mais que le fichier de credentials, les IDs de
-classeurs ou les credentials eux-mêmes sont invalides, **l'App reste démarrée**.
-La synchronisation passe en état non prêt/échec et aucune publication canonique
-partielle n'est effectuée.
-
-Le raccordement à un agent conversationnel/Assist est une étape séparée et ne
-doit être activé qu'après validation terrain de la chaîne Google → SQLite.
+Une configuration Google absente ou invalide ne doit jamais empêcher l'App de
+démarrer. La synchronisation devient simplement `not_ready` et la base
+canonique existante reste intacte.

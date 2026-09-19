@@ -1,24 +1,53 @@
-"""Explicit canonical source coordinates.
+"""Approved canonical source coordinates.
 
-No Drive discovery is performed at runtime: only these approved workbook/sheet
-coordinates may feed the compiler.
+Workbook IDs are private runtime configuration. The repository only carries
+sheet names and ranges; it never embeds a user's Google workbook IDs.
 """
+import os
+
 from .google_sheets import SheetRange
 
-CANONICAL_RANGES = {
-    "metier": SheetRange(
-        "16D6ce8my4_mAkCDJKn2z4v2sVWmGbJZkLDP0w2pKxIo",
-        "Référentiel métier", "A1:P1000"),
-    "memory_ia": SheetRange(
-        "16D6ce8my4_mAkCDJKn2z4v2sVWmGbJZkLDP0w2pKxIo",
-        "Mémoire IA", "A1:T1000"),
-    "relations": SheetRange(
-        "1Q5-X_popgmdeY26joNvGnNmA1msrYFGN-iKlub6HMXk",
-        "09_Relations fonctionnelles", "A1:O1000"),
-    "automations": SheetRange(
-        "1UZ6pI3ToIXSt28is1h_SrYY_0XXnNtbn_5aoXnbWm3c",
-        "Automatisations", "A1:M500"),
-    "scripts": SheetRange(
-        "1tgfhLH3YZjebu-h_7zSyNG-p7923NDZQMipwE5mAT-A",
-        "Scripts Pyscript", "A1:Q500"),
+_ENV_BY_WORKBOOK = {
+    "home_assistant": "ELISE_MEMORY_SHEET_HOME_ASSISTANT_ID",
+    "index": "ELISE_MEMORY_SHEET_INDEX_ID",
+    "automations": "ELISE_MEMORY_SHEET_AUTOMATIONS_ID",
+    "scripts": "ELISE_MEMORY_SHEET_SCRIPTS_ID",
 }
+
+
+def _workbook_id(name: str) -> str:
+    return os.getenv(_ENV_BY_WORKBOOK[name], "").strip()
+
+
+def canonical_ranges() -> dict[str, SheetRange]:
+    return {
+        "metier": SheetRange(
+            _workbook_id("home_assistant"),
+            "Référentiel métier", "A1:P1000"),
+        "memory_ia": SheetRange(
+            _workbook_id("home_assistant"),
+            "Mémoire IA", "A1:T1000"),
+        "relations": SheetRange(
+            _workbook_id("index"),
+            "09_Relations fonctionnelles", "A1:O1000"),
+        "automations": SheetRange(
+            _workbook_id("automations"),
+            "Automatisations", "A1:M500"),
+        "scripts": SheetRange(
+            _workbook_id("scripts"),
+            "Scripts Pyscript", "A1:Q500"),
+    }
+
+
+def missing_canonical_source_ids() -> list[str]:
+    return [
+        env_name
+        for env_name in _ENV_BY_WORKBOOK.values()
+        if not os.getenv(env_name, "").strip()
+    ]
+
+
+def require_canonical_source_ids() -> None:
+    missing = missing_canonical_source_ids()
+    if missing:
+        raise RuntimeError("canonical_sources_required:" + ",".join(missing))

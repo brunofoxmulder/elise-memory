@@ -11,14 +11,15 @@ from .ha_reader import HomeAssistantReader
 from .session import GreetingCommit, ConversationOpening, commit_greeting, conversation_opening
 from .store import MemoryStore
 from .knowledge import KnowledgeStore
-from .runtime import build_scheduler
+from .sync import synchronize_canonical
+from .runtime import build_reader_from_env, build_scheduler, sync_runtime_status
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 knowledge_store = KnowledgeStore(DB_PATH)
 scheduler = None
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.8")
+app = FastAPI(title="Élise Memory", version="0.1.0-dev.13")
 
 
 @app.on_event("startup")
@@ -37,9 +38,29 @@ def shutdown() -> None:
         scheduler.stop()
 
 
+@app.post("/v1/sync/run")
+def run_sync() -> dict:
+    """Run one guarded canonical sync on explicit request."""
+    try:
+        report = synchronize_canonical(knowledge_store, build_reader_from_env())
+    except Exception as exc:
+        knowledge_store.record_sync_failure(f"{type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=503, detail=f"{type(exc).__name__}: {exc}") from exc
+    return {
+        "source_rows": report.source_rows,
+        "compiled_by_source": report.compiled_by_source,
+        "compiled_records": report.compiled_records,
+        "changed": report.changed,
+        "deactivated": report.deactivated,
+        "relations": report.relations,
+    }
+
+
 @app.get("/v1/sync/health")
 def sync_health() -> dict:
-    return knowledge_store.sync_health()
+    health = knowledge_store.sync_health()
+    health["runtime"] = sync_runtime_status()
+    return health
 
 
 @app.get("/v1/knowledge/search")
@@ -51,8 +72,15 @@ def search_knowledge(q: str, limit: int = 8) -> dict:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "isolated"}
+def health() -> dict:
+    runtime = sync_runtime_status()
+    sync_state = "ready" if runtime["ready"] else ("not_ready" if runtime["enabled"] else "disabled")
+    return {
+        "status": "ok",
+        "mode": "isolated",
+        "version": "0.1.0-dev.13",
+        "sync": sync_state,
+    }
 
 
 @app.post("/v1/memories", response_model=MemoryRecord, status_code=201)
