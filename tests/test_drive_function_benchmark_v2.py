@@ -825,7 +825,7 @@ mode: single
     )[0]
     assert on["effect"] == "turn_on"
     assert any(x["subject"] == "binary_sensor.brosse_utilisee" and x["predicate"] == "TRIGGERS" for x in on["context"])
-    assert all(x["predicate"] != "DELAY_BARRIER" for x in on["barriers"])
+    assert on["barriers"] == []
     assert off["effect"] == "turn_off"
     assert any(
         x["predicate"] == "DELAY_BARRIER" and "hours" in x["object"]
