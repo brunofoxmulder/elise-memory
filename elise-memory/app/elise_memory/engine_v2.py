@@ -1019,17 +1019,28 @@ def retrieve_automation_chains(
                 }
             )
 
-    # One result per automation/target/effect, ordered by evidence rather than row age.
-    dedup: dict[tuple[str, str, str | None], dict[str, Any]] = {}
+    # One result per automation/target. A generic question may legitimately
+    # encounter several actions (for example ON then OFF after a wait); keep
+    # the full effect set without duplicating the automation in the answer.
+    dedup: dict[tuple[str, str], dict[str, Any]] = {}
     for result in results:
         key = (
             result["automation_entity_id"],
             result["target_entity_id"],
-            result["effect"],
         )
         previous = dedup.get(key)
-        if previous is None or result["score"] > previous["score"]:
+        if previous is None:
+            result["effects"] = [result["effect"]] if result["effect"] else []
             dedup[key] = result
+            continue
+        effects = set(previous.get("effects", []))
+        if result["effect"]:
+            effects.add(result["effect"])
+        previous["effects"] = sorted(effects)
+        if result["score"] > previous["score"]:
+            previous["score"] = result["score"]
+            previous["effect"] = result["effect"]
+            previous["action_detail"] = result["action_detail"]
     return sorted(
         dedup.values(),
         key=lambda item: (-item["score"], item["automation_entity_id"]),
