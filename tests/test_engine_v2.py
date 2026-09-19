@@ -493,8 +493,9 @@ def test_r8_relation_preserves_role_confidence_and_proof_without_becoming_action
     edges = r8_edges(entities, reconciliation, relations)
     assert len(edges) == 1
     edge = edges[0]
-    assert edge.source == "binary_sensor.entry_motion"
+    assert edge.subject == "binary_sensor.entry_motion"
     assert edge.object == "automation.entry_main"
+    assert edge.source == SourceKind.R8_RELATION
     assert edge.predicate.startswith("R8:")
     assert edge.predicate != "ACTS_ON"
     detail = json.loads(edge.detail)
