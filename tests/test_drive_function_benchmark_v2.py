@@ -3,11 +3,13 @@ import json
 from elise_memory.engine_v2 import (
     AutomationDoc,
     EntityRecord,
+    RegistryBinding,
     build_operational_graph,
     reconcile_automations,
     retrieve_automation_behavior,
     retrieve_automation_chains,
     retrieve_triggered_chains,
+    resolve_registry_edges,
 )
 
 
@@ -536,3 +538,181 @@ def test_drive_climate_window_rule_answers_explicit_power_off_question():
     assert item["target_entity_id"] == "climate.salon"
     assert item["effect"] == "turn_off"
     assert item["action_detail"]["data"]["hvac_mode"] == "off"
+
+
+def test_drive_real_salon_window_device_trigger_requires_exact_registry_binding():
+    entities = [
+        EntityRecord("automation.salon_window_open", "automation", "Ouverture volet salon par ouverture de la fenetre", "on"),
+        EntityRecord("binary_sensor.fenetre_porte_contact", "binary_sensor", "Fenêtre salon", "off"),
+        EntityRecord("cover.volet_salon_2", "cover", "Volet salon", "closed"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Ouverture volet salon par ouverture de la fenetre",
+            """
+alias: Ouverture volet salon par ouverture de la fenetre
+triggers:
+  - type: opened
+    device_id: 772d73c850b0f8ccebc9955a857c0947
+    entity_id: bf61804c3ebdbc2f9832e66344ec19d8
+    domain: binary_sensor
+    trigger: device
+conditions: []
+actions:
+  - action: cover.set_cover_position
+    target:
+      entity_id: cover.volet_salon_2
+    data:
+      position: 100
+mode: single
+""",
+            "Installée",
+            7,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    unresolved = retrieve_triggered_chains(
+        "quand la fenêtre salon s'ouvre", entities, reconciliation, graph
+    )
+    assert unresolved == []
+
+    resolved = resolve_registry_edges(
+        graph,
+        entities,
+        [
+            RegistryBinding(
+                "bf61804c3ebdbc2f9832e66344ec19d8",
+                "binary_sensor.fenetre_porte_contact",
+                "ha_entity_registry_readonly",
+            )
+        ],
+    )
+    result = retrieve_triggered_chains(
+        "quand la fenêtre salon s'ouvre", entities, reconciliation, resolved
+    )
+    item = next(x for x in result if x["automation_entity_id"] == "automation.salon_window_open")
+    assert item["source_entity_id"] == "binary_sensor.fenetre_porte_contact"
+    assert item["target"] == "cover.volet_salon_2"
+    assert item["effect"] == "set_cover_position"
+    assert item["action_detail"]["data"]["position"] == 100
+
+
+def test_drive_real_entry_unlock_is_a_trigger_not_a_textual_association():
+    entities = [
+        EntityRecord("automation.entree", "automation", "Allumer lampe entrée selon l'heure et la présence", "on"),
+        EntityRecord("lock.porte_dentree", "lock", "Porte d'entrée", "locked"),
+        EntityRecord("binary_sensor.eclairement_entree_mouvement", "binary_sensor", "Mouvement entrée", "off"),
+        EntityRecord("switch.prise_de_comptage_prise_1", "switch", "Prise de comptage", "on"),
+        EntityRecord("input_boolean.mode_cinema", "input_boolean", "Mode cinéma", "off"),
+        EntityRecord("light.hue_tento_color_panel_1_2", "light", "Lampe entrée", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Allumer lampe entrée selon l'heure et la présence",
+            """
+alias: Allumer lampe entrée selon l'heure et la présence
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.eclairement_entree_mouvement
+    from: "off"
+    to: "on"
+  - trigger: state
+    entity_id: lock.porte_dentree
+    from: locked
+    to: unlocked
+conditions:
+  - condition: state
+    entity_id: switch.prise_de_comptage_prise_1
+    state: "on"
+  - condition: state
+    entity_id: input_boolean.mode_cinema
+    state: "off"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.hue_tento_color_panel_1_2
+  - wait_for_trigger:
+      - trigger: state
+        entity_id: binary_sensor.eclairement_entree_mouvement
+        to: "off"
+        for: "00:02:00"
+  - action: light.turn_off
+    target:
+      entity_id: light.hue_tento_color_panel_1_2
+mode: restart
+""",
+            "Installée",
+            18,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_triggered_chains(
+        "quand la porte d'entrée est déverrouillée", entities, reconciliation, graph
+    )
+    on = next(
+        x for x in result
+        if x["automation_entity_id"] == "automation.entree"
+        and x["effect"] == "turn_on"
+    )
+    assert on["source_entity_id"] == "lock.porte_dentree"
+    assert on["target"] == "light.hue_tento_color_panel_1_2"
+
+
+def test_drive_real_bathroom_motion_keeps_delayed_off_separate():
+    entities = [
+        EntityRecord("automation.sdb", "automation", "Allumer salle de bain selon l'heure et la présence", "on"),
+        EntityRecord("binary_sensor.salle_de_bain_mouvement", "binary_sensor", "Mouvement salle de bain", "off"),
+        EntityRecord("switch.prise_de_comptage_prise_1", "switch", "Prise de comptage", "on"),
+        EntityRecord("input_boolean.mode_cinema", "input_boolean", "Mode cinéma", "off"),
+        EntityRecord("light.hue_tento_color_panel_1", "light", "Lampe salle de bain", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Allumer salle de bain selon l'heure et la présence",
+            """
+alias: Allumer salle de bain selon l'heure et la présence
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.salle_de_bain_mouvement
+    from: "off"
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: switch.prise_de_comptage_prise_1
+    state: "on"
+  - condition: state
+    entity_id: input_boolean.mode_cinema
+    state: "off"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.hue_tento_color_panel_1
+  - wait_for_trigger:
+      - trigger: state
+        entity_id: binary_sensor.salle_de_bain_mouvement
+        to: "off"
+        for: "00:05:00"
+  - action: light.turn_off
+    target:
+      entity_id: light.hue_tento_color_panel_1
+mode: restart
+""",
+            "Validée",
+            19,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    on = retrieve_automation_chains(
+        "qu'est-ce qui allume la lampe salle de bain", entities, reconciliation, graph
+    )[0]
+    off = retrieve_automation_chains(
+        "qu'est-ce qui éteint la lampe salle de bain", entities, reconciliation, graph
+    )[0]
+    assert on["effect"] == "turn_on"
+    assert all(x["predicate"] != "WAITS_FOR" for x in on["context"])
+    assert off["effect"] == "turn_off"
+    assert any(x["predicate"] == "WAITS_FOR" for x in off["context"])
