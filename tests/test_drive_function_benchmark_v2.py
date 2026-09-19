@@ -1098,3 +1098,88 @@ mode: single
         "quand la porte-fenêtre terrasse se ferme", entities, reconciliation, graph
     )
     assert not any(x["automation_entity_id"] == "automation.terrace_weather" for x in door)
+
+
+def test_drive_tineco_on_and_off_have_different_real_causes():
+    entities = [
+        EntityRecord("automation.tineco_on", "automation", "Allume prise tineco si utilisation", "on"),
+        EntityRecord("automation.tineco_off", "automation", "Couper prise Tineco quand charge terminée", "on"),
+        EntityRecord("binary_sensor.tineco_online", "binary_sensor", "Tineco Device Tineco Online", "off"),
+        EntityRecord("sensor.tineco_battery", "sensor", "Tineco Device Tineco Battery", "80"),
+        EntityRecord("sensor.rte_tempo_couleur_actuelle", "sensor", "Couleur Tempo actuelle", "Bleu"),
+        EntityRecord("switch.0xa4c1387da600c253", "switch", "Tineco", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Allume prise tineco si utilisation",
+            """
+alias: Allume prise tineco si utilisation
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.tineco_online
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: sensor.rte_tempo_couleur_actuelle
+    state:
+      - Bleu
+      - Blanc
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.0xa4c1387da600c253
+mode: single
+""",
+            "Validée",
+            52,
+        ),
+        AutomationDoc(
+            "Couper prise Tineco quand charge terminée",
+            """
+alias: Couper prise Tineco quand charge terminée
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.tineco_battery
+    above: 99.9
+conditions: []
+actions:
+  - action: switch.turn_off
+    target:
+      entity_id: switch.0xa4c1387da600c253
+mode: single
+""",
+            "Validée / production",
+            55,
+        ),
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+
+    on = retrieve_automation_chains(
+        "qu'est-ce qui allume la prise Tineco", entities, reconciliation, graph
+    )
+    on_item = next(x for x in on if x["automation_entity_id"] == "automation.tineco_on")
+    assert on_item["effect"] == "turn_on"
+    assert on_item["trigger"] == "binary_sensor.tineco_online"
+    assert {x["subject"] for x in on_item["guards"]} == {"sensor.rte_tempo_couleur_actuelle"}
+    assert on_item["trigger"] != "sensor.rte_tempo_couleur_actuelle"
+
+    off = retrieve_automation_chains(
+        "qu'est-ce qui éteint la prise Tineco", entities, reconciliation, graph
+    )
+    off_item = next(x for x in off if x["automation_entity_id"] == "automation.tineco_off")
+    assert off_item["effect"] == "turn_off"
+    assert off_item["trigger"] == "sensor.tineco_battery"
+    assert off_item["trigger_detail"]["above"] == 99.9
+    assert off_item["trigger"] != "binary_sensor.tineco_online"
+
+
+def test_drive_tineco_battery_query_prefers_precise_sensor_over_generic_switch():
+    entities = [
+        EntityRecord("sensor.tineco_battery", "sensor", "Tineco Device Tineco Battery", "80"),
+        EntityRecord("switch.0xa4c1387da600c253", "switch", "Tineco", "off"),
+        EntityRecord("sensor.tineco_model", "sensor", "Tineco Device Tineco Model", "S7 Pro"),
+    ]
+    ranked = search_entities("batterie Tineco", entities)
+    assert ranked[0].entity_id == "sensor.tineco_battery"
+    assert ranked[0].entity_id != "switch.0xa4c1387da600c253"
