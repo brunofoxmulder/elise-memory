@@ -190,6 +190,15 @@ class ReconciledBusinessFunction:
     binding_status: str
 
 
+@dataclass(frozen=True)
+class ObjectDependencyDoc:
+    object_ref: str
+    automation_name: str
+    domain: str | None = None
+    name: str | None = None
+    observed_state: str | None = None
+
+
 def normalize_text(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
     return "".join(
@@ -381,6 +390,85 @@ def business_context_for_entity(
         if item.binding_entity_id == entity_id
         and item.binding_status in {"current_entity", "current_alias"}
     ]
+
+
+def object_dependencies_from_rows(
+    header: list[object],
+    rows: list[list[object]],
+) -> list[ObjectDependencyDoc]:
+    names = [str(x or "").strip() for x in header]
+    required = {"Objet", "Automatisation liée"}
+    if not required.issubset(set(names)):
+        missing = sorted(required - set(names))
+        raise ValueError("object_dependency_missing_columns:" + ",".join(missing))
+    out: list[ObjectDependencyDoc] = []
+    for raw in rows:
+        padded = list(raw) + [""] * (len(names) - len(raw))
+        row = dict(zip(names, padded))
+        object_ref = str(row["Objet"] or "").strip()
+        automation_name = str(row["Automatisation liée"] or "").strip()
+        if not object_ref or not automation_name:
+            continue
+        out.append(
+            ObjectDependencyDoc(
+                object_ref=object_ref,
+                automation_name=automation_name,
+                domain=str(row.get("Domaine HA") or "").strip() or None,
+                name=str(row.get("Nom HA") or "").strip() or None,
+                observed_state=str(row.get("État HA") or "").strip() or None,
+            )
+        )
+    return out
+
+
+def dependency_edges(
+    entities: Iterable[EntityRecord],
+    reconciliation: ReconciliationResult,
+    dependencies: Iterable[ObjectDependencyDoc],
+    *,
+    include_disabled: bool = False,
+) -> list[GraphEdge]:
+    """Build low-authority USES edges; dependencies never imply an action."""
+    current_ids = {entity.entity_id for entity in entities}
+    by_name = {
+        normalize_text(item.name): item
+        for item in reconciliation.matched
+        if include_disabled or item.state == "on"
+    }
+    edges: list[GraphEdge] = []
+    for dep in dependencies:
+        automation = by_name.get(normalize_text(dep.automation_name))
+        if not automation:
+            continue
+        ref = dep.object_ref.strip()
+        if ref in current_ids:
+            object_node = ref
+            binding = "current_entity"
+        elif ref.startswith("device_id:"):
+            object_node = "device_ref:" + ref.split(":", 1)[1].strip()
+            binding = "device_ref"
+        elif ref.startswith("entity_id:"):
+            candidate = ref.split(":", 1)[1].strip()
+            object_node = candidate if candidate in current_ids else _node_for_entity_ref(candidate)
+            binding = "current_entity" if candidate in current_ids else "unresolved_entity"
+        else:
+            object_node = f"document_ref:{ref}"
+            binding = "document_only"
+        edges.append(
+            GraphEdge(
+                automation.entity_id,
+                "USES",
+                object_node,
+                SourceKind.OBJECTS_HA,
+                _detail(
+                    binding=binding,
+                    domain=dep.domain,
+                    name=dep.name,
+                    observed_state=dep.observed_state,
+                ),
+            )
+        )
+    return list(dict.fromkeys(edges))
 
 
 def automation_docs_from_rows(header: list[object], rows: list[list[object]]) -> list[AutomationDoc]:
