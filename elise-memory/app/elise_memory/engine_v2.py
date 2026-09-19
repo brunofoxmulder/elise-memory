@@ -34,12 +34,15 @@ _STOPWORDS = {
     "quelle", "qui", "quoi", "sa", "se", "ses", "sur", "un", "une",
     "automatisation", "automatisations", "automation", "fonction",
     "fonctionne", "gerer", "gere", "gestion",
+    "quand", "lorsque", "si", "alors", "je", "j", "tu", "il", "on",
+    "nous", "vous", "ils", "elles", "arrive", "arrivent", "passe",
 }
 _ACTION_WORDS = {
     "allume", "allumer", "eteint", "eteindre", "coupe", "couper",
     "ouvre", "ouvrir", "ferme", "fermer", "active", "activer",
     "desactive", "desactiver", "demarre", "demarrer",
     "verrouille", "verrouiller", "deverrouille", "deverrouiller",
+    "charge", "charger", "recharge", "recharger",
 }
 
 
@@ -1534,7 +1537,9 @@ def resolve_entities(
         hints.add("light")
     if "volet" in qtokens:
         hints.add("cover")
-    if {"prise", "chargeur"} & qtokens:
+    if {"prise", "chargeur"} & qtokens or re.search(
+        r"\b(?:re)?charg\w*\b", normalize_text(query)
+    ):
         hints.add("switch")
     if {"serrure"} & qtokens or re.search(r"\b(?:de)?verrouill\w*\b", normalize_text(query)):
         hints.add("lock")
