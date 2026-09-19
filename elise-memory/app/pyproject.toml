@@ -1,6 +1,6 @@
 [project]
 name = "elise-memory"
-version = "0.1.0-dev.13"
+version = "0.1.0-dev.17"
 description = "Local deterministic memory service for Home Assistant"
 requires-python = ">=3.12"
 dependencies = [
