@@ -9,7 +9,8 @@ from elise_memory.engine_v2 import (
     retrieve_automation_behavior,
     retrieve_automation_chains,
     retrieve_triggered_chains,
-    resolve_registry_edges,\n    resolve_entities,
+    resolve_registry_edges,
+    resolve_entities,
 )
 
 
@@ -1157,14 +1158,19 @@ mode: single
     )
     on_item = next(x for x in on if x["automation_entity_id"] == "automation.tineco_on")
     assert on_item["effect"] == "turn_on"
-    on_triggers = [x for x in on_item["context"] if x["predicate"] == "TRIGGERS"]\n    on_guards = [x for x in on_item["context"] if x["predicate"] == "GUARDS"]\n    assert {x["subject"] for x in on_triggers} == {"binary_sensor.tineco_online"}\n    assert {x["subject"] for x in on_guards} == {"sensor.rte_tempo_couleur_actuelle"}
+    on_triggers = [x for x in on_item["context"] if x["predicate"] == "TRIGGERS"]
+    on_guards = [x for x in on_item["context"] if x["predicate"] == "GUARDS"]
+    assert {x["subject"] for x in on_triggers} == {"binary_sensor.tineco_online"}
+    assert {x["subject"] for x in on_guards} == {"sensor.rte_tempo_couleur_actuelle"}
 
     off = retrieve_automation_chains(
         "qu'est-ce qui éteint la prise Tineco", entities, reconciliation, graph
     )
     off_item = next(x for x in off if x["automation_entity_id"] == "automation.tineco_off")
     assert off_item["effect"] == "turn_off"
-    off_triggers = [x for x in off_item["context"] if x["predicate"] == "TRIGGERS"]\n    assert {x["subject"] for x in off_triggers} == {"sensor.tineco_battery"}\n    assert off_triggers[0]["detail"]["above"] == 99.9
+    off_triggers = [x for x in off_item["context"] if x["predicate"] == "TRIGGERS"]
+    assert {x["subject"] for x in off_triggers} == {"sensor.tineco_battery"}
+    assert off_triggers[0]["detail"]["above"] == 99.9
 
 
 def test_drive_tineco_battery_query_prefers_precise_sensor_over_generic_switch():
@@ -1173,4 +1179,6 @@ def test_drive_tineco_battery_query_prefers_precise_sensor_over_generic_switch()
         EntityRecord("switch.0xa4c1387da600c253", "switch", "Tineco", "off"),
         EntityRecord("sensor.tineco_model", "sensor", "Tineco Device Tineco Model", "S7 Pro"),
     ]
-    ranked = resolve_entities("batterie Tineco", entities)\n    assert ranked[0][0].entity_id == "sensor.tineco_battery"\n    assert ranked[0][0].entity_id != "switch.0xa4c1387da600c253"
+    ranked = resolve_entities("batterie Tineco", entities)
+    assert ranked[0][0].entity_id == "sensor.tineco_battery"
+    assert ranked[0][0].entity_id != "switch.0xa4c1387da600c253"
