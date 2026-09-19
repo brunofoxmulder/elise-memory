@@ -26,10 +26,16 @@ La couche `temporal` reste réservée aux faits à durée de validité explicite
 
 ## Point d'intégration
 
-Le serveur expose `POST /v1/agent/query`. La future intégration Home Assistant doit
-l'enregistrer comme API LLM distincte et sélectionnable. Élise Live sait déjà
-fusionner les API LLM choisies par l'utilisateur ; aucune modification de sa boucle
-audio ou de sa conservation de session n'est requise.
+Le serveur expose `POST /v1/agent/query` pour les tests et un serveur MCP Streamable
+HTTP sur `/mcp`. L'intégration MCP officielle de Home Assistant peut enregistrer ce
+serveur comme API LLM distincte et sélectionnable. Élise Live sait déjà fusionner
+les API LLM choisies par l'utilisateur ; aucune modification de sa boucle audio ou
+de sa conservation de session n'est requise.
+
+Le serveur MCP ne publie qu'un outil : `consult_elise_memory`. L'outil est en lecture
+seule et retourne le même contrat borné que l'API HTTP. Le port hôte de l'app n'est
+plus exposé par défaut ; une éventuelle exposition doit être décidée et validée lors
+de la recette réseau.
 
 Réponse garantie :
 
