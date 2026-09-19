@@ -13,6 +13,9 @@ from elise_memory.engine_v2 import (
 
 ENTITIES = [
     EntityRecord("automation.hotte", "automation", "Allumer hotte selon présence", "on"),
+    EntityRecord("automation.entree_presence", "automation", "Allumer lampe entrée selon l\'heure et la présence", "on"),
+    EntityRecord("automation.entree_unlock", "automation", "Allumer lampe entrée lors déverrouillage porte", "on"),
+    EntityRecord("automation.sdb_presence", "automation", "Allumer salle de bain selon l\'heure et la présence", "on"),
     EntityRecord("automation.tineco_on", "automation", "Allume prise tineco si utilisation", "on"),
     EntityRecord("automation.tineco_off", "automation", "Couper prise Tineco quand charge terminée", "on"),
     EntityRecord("automation.clim_fenetre", "automation", "Désactivation intelligente de la clim si fenêtre salon ouverte", "on"),
@@ -22,6 +25,11 @@ ENTITIES = [
     EntityRecord("automation.lave_dry", "automation", "Lave-linge - Passage au séchage", "on"),
     EntityRecord("automation.lave_end", "automation", "Lave-linge - Fin de cycle", "on"),
     EntityRecord("binary_sensor.motion_hotte", "binary_sensor", "Mouvement hotte", "off"),
+    EntityRecord("binary_sensor.entree_motion", "binary_sensor", "Mouvement entrée", "off"),
+    EntityRecord("binary_sensor.sdb_motion", "binary_sensor", "Mouvement salle de bain", "off"),
+    EntityRecord("lock.porte_dentree", "lock", "Porte d\'entrée", "locked"),
+    EntityRecord("light.entree", "light", "Lampe entrée", "off"),
+    EntityRecord("light.sdb", "light", "Lampe salle de bain", "off"),
     EntityRecord("switch.awake", "switch", "Prise de comptage", "on"),
     EntityRecord("input_boolean.cinema", "input_boolean", "Mode cinéma", "off"),
     EntityRecord("light.hotte", "light", "Hotte", "off"),
@@ -41,6 +49,93 @@ ENTITIES = [
 
 
 DOCS = [
+    AutomationDoc(
+        "Allumer lampe entrée selon l'heure et la présence",
+        """
+alias: Allumer lampe entrée selon l'heure et la présence
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entree_motion
+    from: "off"
+    to: "on"
+  - trigger: state
+    entity_id: lock.porte_dentree
+    from: locked
+    to: unlocked
+conditions:
+  - condition: state
+    entity_id: switch.awake
+    state: "on"
+  - condition: state
+    entity_id: input_boolean.cinema
+    state: "off"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entree
+  - wait_for_trigger:
+      - trigger: state
+        entity_id: binary_sensor.entree_motion
+        to: "off"
+        for: "00:02:00"
+  - action: light.turn_off
+    target:
+      entity_id: light.entree
+mode: restart
+""",
+        "Validée",
+        18,
+    ),
+    AutomationDoc(
+        "Allumer lampe entrée lors déverrouillage porte",
+        """
+alias: Allumer lampe entrée lors déverrouillage porte
+triggers:
+  - trigger: state
+    entity_id: lock.porte_dentree
+    to: unlocked
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entree
+mode: single
+""",
+        "Validée",
+        57,
+    ),
+    AutomationDoc(
+        "Allumer salle de bain selon l'heure et la présence",
+        """
+alias: Allumer salle de bain selon l'heure et la présence
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.sdb_motion
+    from: "off"
+    to: "on"
+conditions:
+  - condition: state
+    entity_id: switch.awake
+    state: "on"
+  - condition: state
+    entity_id: input_boolean.cinema
+    state: "off"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.sdb
+  - wait_for_trigger:
+      - trigger: state
+        entity_id: binary_sensor.sdb_motion
+        to: "off"
+        for: "00:05:00"
+  - action: light.turn_off
+    target:
+      entity_id: light.sdb
+mode: restart
+""",
+        "Validée",
+        19,
+    ),
     AutomationDoc(
         "Allumer hotte selon présence",
         """
@@ -386,3 +481,41 @@ def test_drive_laundry_end_keeps_below_5_for_3min_and_two_final_actions():
     actions = {(x["object"], x["detail"].get("effect")) for x in behavior["actions"]}
     assert ("input_boolean.lave", "turn_off") in actions
     assert ("input_select.phase", "select_option") in actions
+
+
+def test_drive_entry_light_unlock_is_a_real_trigger_not_window_opening():
+    reconciliation, graph = _engine()
+    result = retrieve_triggered_chains(
+        "quand la porte d'entrée se déverrouille", ENTITIES, reconciliation, graph
+    )
+    entry = [x for x in result if x["target"] == "light.entree" and x["effect"] == "turn_on"]
+    assert {x["automation_entity_id"] for x in entry} == {
+        "automation.entree_presence",
+        "automation.entree_unlock",
+    }
+    assert all(x["trigger"] == "lock.porte_dentree" for x in entry)
+
+
+def test_drive_entry_light_does_not_invent_window_opening_as_trigger():
+    reconciliation, graph = _engine()
+    result = retrieve_triggered_chains(
+        "quand la fenêtre s'ouvre", ENTITIES, reconciliation, graph
+    )
+    assert not any(x["target"] == "light.entree" for x in result)
+
+
+def test_drive_bathroom_light_is_motion_driven_and_has_no_unlock_trigger():
+    reconciliation, graph = _engine()
+    motion = retrieve_triggered_chains(
+        "quand il y a du mouvement dans la salle de bain", ENTITIES, reconciliation, graph
+    )
+    assert any(
+        x["automation_entity_id"] == "automation.sdb_presence"
+        and x["target"] == "light.sdb"
+        and x["effect"] == "turn_on"
+        for x in motion
+    )
+    unlock = retrieve_triggered_chains(
+        "quand la porte d'entrée se déverrouille", ENTITIES, reconciliation, graph
+    )
+    assert not any(x["target"] == "light.sdb" for x in unlock)
