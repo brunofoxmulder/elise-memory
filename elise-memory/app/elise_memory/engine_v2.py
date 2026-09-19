@@ -45,6 +45,23 @@ _ACTION_WORDS = {
     "charge", "charger", "recharge", "recharger",
 }
 
+_TOKEN_EQUIVALENTS: dict[str, set[str]] = {
+    "batterie": {"battery"},
+    "battery": {"batterie"},
+    "puissance": {"power"},
+    "power": {"puissance"},
+    "mouvement": {"motion"},
+    "motion": {"mouvement"},
+    "fenetre": {"window"},
+    "window": {"fenetre"},
+    "volet": {"shutter"},
+    "shutter": {"volet"},
+    "lampe": {"lamp", "light"},
+    "lamp": {"lampe", "light"},
+    "humidite": {"humidity"},
+    "humidity": {"humidite"},
+}
+
 
 class SourceKind(StrEnum):
     HA_CURRENT = "ha_current"
@@ -280,6 +297,14 @@ def normalize_text(value: object) -> str:
 def _tokens(value: object) -> list[str]:
     folded = normalize_text(value)
     return re.findall(r"[a-z0-9]+", folded)
+
+
+def _expanded_identity_tokens(value: object) -> set[str]:
+    base = set(_tokens(value))
+    expanded = set(base)
+    for token in base:
+        expanded.update(_TOKEN_EQUIVALENTS.get(token, set()))
+    return expanded
 
 
 def choose_preferred_fact(facts: Iterable[SourceFact]) -> SourceFact | None:
@@ -1775,7 +1800,7 @@ def _intent(query: str) -> str | None:
 def _object_tokens(query: str) -> set[str]:
     return {
         token
-        for token in _tokens(query)
+        for token in _expanded_identity_tokens(query)
         if token not in _STOPWORDS and token not in _ACTION_WORDS and len(token) >= 2
     }
 
@@ -1807,7 +1832,7 @@ def resolve_entities(
     for entity in entities:
         name_norm = normalize_text(entity.name)
         entity_norm = normalize_text(entity.entity_id)
-        name_tokens = set(_tokens(entity.name))
+        name_tokens = _expanded_identity_tokens(entity.name)
         score = 0
         if qnorm == name_norm or qnorm == entity_norm:
             score = 140
