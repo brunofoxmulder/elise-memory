@@ -19,6 +19,7 @@ from elise_memory.engine_v2 import (
     r8_relations_from_rows,
     resolve_entities,
     retrieve_automation_chains,
+    retrieve_triggered_chains,
 )
 
 
@@ -757,3 +758,130 @@ actions:
         "automation.generic_off",
     }
     assert all(item["effect"] == "turn_off" for item in result)
+
+
+
+def test_trigger_source_query_traverses_motion_to_entry_light_actions():
+    entities, reconciliation, graph = _engine()
+    result = retrieve_triggered_chains(
+        "what happens when there is entry motion", entities, reconciliation, graph
+    )
+    assert {
+        (item["automation_entity_id"], item["target"], item["effect"])
+        for item in result
+    } >= {
+        ("automation.entry_main", "light.entry", "turn_on"),
+        ("automation.entry_main", "light.entry", "turn_off"),
+    }
+
+
+def test_trigger_source_query_traverses_window_to_shutter_opening():
+    entities, reconciliation, graph = _engine()
+    result = retrieve_triggered_chains(
+        "what happens when the lounge window opens", entities, reconciliation, graph
+    )
+    assert [
+        (item["automation_entity_id"], item["target"], item["effect"])
+        for item in result
+    ] == [("automation.shutter_open", "cover.lounge", "open")]
+
+
+def test_guard_is_not_mistaken_for_trigger_in_source_query():
+    entities, reconciliation, graph = _engine()
+    result = retrieve_triggered_chains(
+        "what happens when the awake signal is on", entities, reconciliation, graph
+    )
+    assert all(item["automation_entity_id"] != "automation.entry_main" for item in result)
+
+
+def test_if_then_else_actions_and_local_guard_are_parsed():
+    entities = _entities() + [
+        EntityRecord("automation.if_task", "automation", "Conditional lamp", "on"),
+        EntityRecord("switch.mode", "switch", "Mode switch", "off"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Conditional lamp",
+            """
+alias: Conditional lamp
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - if:
+      - condition: state
+        entity_id: switch.mode
+        state: "on"
+    then:
+      - action: light.turn_on
+        target:
+          entity_id: light.entry
+    else:
+      - action: light.turn_off
+        target:
+          entity_id: light.entry
+""",
+            "Validated",
+            40,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "switch.mode"
+        and edge.predicate == "LOCAL_GUARD"
+        and edge.object == "automation.if_task"
+        for edge in graph
+    )
+    assert {
+        json.loads(edge.detail).get("effect")
+        for edge in graph
+        if edge.subject == "automation.if_task"
+        and edge.predicate == "ACTS_ON"
+        and edge.object == "light.entry"
+    } == {"turn_on", "turn_off"}
+
+
+def test_source_query_does_not_guess_opaque_device_trigger_identity():
+    entities = _entities() + [
+        EntityRecord("automation.opaque_window", "automation", "Opaque window task", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Opaque window task",
+            """
+alias: Opaque window task
+triggers:
+  - trigger: device
+    domain: binary_sensor
+    device_id: 11111111111111111111111111111111
+    entity_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    type: opened
+actions:
+  - action: cover.open_cover
+    target:
+      entity_id: cover.lounge
+""",
+            "Validated",
+            41,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_triggered_chains(
+        "what happens when the lounge window opens", entities, reconciliation, graph
+    )
+    assert all(item["automation_entity_id"] != "automation.opaque_window" for item in result)
+    assert any(
+        edge.subject == "registry_ref:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        and edge.predicate == "TRIGGERS"
+        and edge.object == "automation.opaque_window"
+        for edge in graph
+    )
+
+
+def test_french_unlock_verb_is_removed_from_object_identity_and_hints_lock():
+    entities, _, _ = _engine()
+    result = resolve_entities("quand je deverrouille la porte", entities)
+    assert result[0][0].entity_id == "lock.front_door"
