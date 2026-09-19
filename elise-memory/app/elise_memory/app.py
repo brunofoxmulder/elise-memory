@@ -1,8 +1,10 @@
 """HTTP API for Élise Memory."""
 
+from contextlib import asynccontextmanager
 import os
 
 from fastapi import FastAPI, HTTPException
+from mcp.server.fastmcp import FastMCP
 
 from .context import ContextRequest, ContextResult, build_context
 from .models import MemoryCreate, MemoryKind, MemoryRecord
@@ -15,29 +17,67 @@ from .sync import synchronize_canonical
 from .runtime import build_reader_from_env, build_scheduler, sync_runtime_status
 from .resolver import ResolutionResult, resolve_current_entity
 from .agent import AgentAnswer, AgentQuery, query_agent_memory
+from .conversation_memory import (
+    ConversationMemoryCapture,
+    capture_conversation_memory,
+)
 
 DB_PATH = os.getenv("ELISE_MEMORY_DB", "/data/elise_memory.sqlite3")
 store = MemoryStore(DB_PATH)
 knowledge_store = KnowledgeStore(DB_PATH)
 scheduler = None
 
-app = FastAPI(title="Élise Memory", version="0.1.0-dev.17")
+
+memory_mcp = FastMCP(
+    "Élise Memory",
+    instructions=(
+        "Mémoire consultative de la maison et des conversations. "
+        "Elle n'exécute jamais d'action. Pour toute question causale, suivre "
+        "le routage Investigator retourné par l'outil."
+    ),
+    stateless_http=True,
+    json_response=True,
+    streamable_http_path="/",
+)
 
 
-@app.on_event("startup")
-def startup() -> None:
+@memory_mcp.tool(
+    name="consult_elise_memory",
+    description=(
+        "Consulter la mémoire sourcée de la maison ou des conversations lorsque "
+        "la demande est ambiguë ou nécessite du contexte. Cet outil ne commande "
+        "aucun appareil. Ne pas l'utiliser pour établir pourquoi un événement a eu lieu."
+    ),
+    structured_output=True,
+)
+def consult_elise_memory(query: str) -> AgentAnswer:
+    """Expose the bounded advisory query through Home Assistant's MCP client."""
+    return query_agent_memory(store, knowledge_store, AgentQuery(query=query))
+
+
+mcp_http_app = memory_mcp.streamable_http_app()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Start stores, scheduler and the mounted MCP session manager together."""
     global scheduler
     store.initialize()
     knowledge_store.initialize()
     scheduler = build_scheduler(knowledge_store)
     if scheduler:
         scheduler.start()
-
-
-@app.on_event("shutdown")
-def shutdown() -> None:
+    async with memory_mcp.session_manager.run():
+        yield
     if scheduler:
         scheduler.stop()
+
+
+app = FastAPI(
+    title="Élise Memory",
+    version="0.1.0-dev.17",
+    lifespan=lifespan,
+)
 
 
 @app.post("/v1/sync/run")
@@ -93,7 +133,22 @@ def health() -> dict:
 
 @app.post("/v1/memories", response_model=MemoryRecord, status_code=201)
 def create_memory(item: MemoryCreate) -> MemoryRecord:
+    if item.kind == "conversation":
+        raise HTTPException(
+            status_code=409,
+            detail="use the explicitly confirmed conversation-memory endpoint",
+        )
     return store.add(item)
+
+
+@app.post(
+    "/v1/conversation/memories",
+    response_model=MemoryRecord,
+    status_code=201,
+)
+def remember_conversation(item: ConversationMemoryCapture) -> MemoryRecord:
+    """Store one user-confirmed summary; never a raw transcript or inference."""
+    return capture_conversation_memory(store, item)
 
 
 @app.get("/v1/memories/{kind}/{key}", response_model=list[MemoryRecord])
@@ -140,3 +195,7 @@ def resolve_entity(q: str, limit: int = 5) -> ResolutionResult:
     if not q.strip():
         raise HTTPException(status_code=422, detail="query must not be empty")
     return resolve_current_entity(HomeAssistantReader(), q, limit=limit)
+
+
+# Keep the catch-all mount last so the existing HTTP API remains reachable.
+app.mount("/mcp", mcp_http_app)
