@@ -2281,3 +2281,81 @@ def test_rex_cannot_make_unresolved_registry_reference_operational():
     )
     assert choose_preferred_fact([rex_claim]).source == SourceKind.REX
     assert unresolved[0].object != rex_claim.value
+
+
+def test_retrieval_follows_uniquely_proved_operational_script_effect():
+    entities = [
+        EntityRecord("automation.via_script", "automation", "Entry via script", "on"),
+        EntityRecord("binary_sensor.entry_motion", "binary_sensor", "Entry motion", "off"),
+        EntityRecord("light.proved", "light", "Proved lamp", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Entry via script",
+            """
+alias: Entry via script
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: script.allume_lampe_prouvee
+""",
+            "Validated",
+            200,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    base = build_operational_graph(reconciliation)
+    expanded = extend_graph_with_operational_scripts(
+        base,
+        [
+            OperationalScript(
+                "script.allume_lampe_prouvee",
+                """
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.proved
+""",
+                "ha_script_operational",
+            )
+        ],
+    )
+    results = retrieve_automation_chains(
+        "allume lampe proved", entities, reconciliation, expanded
+    )
+    assert len(results) == 1
+    assert results[0]["automation_entity_id"] == "automation.via_script"
+    assert results[0]["target_entity_id"] == "light.proved"
+    assert results[0]["effect"] == "on"
+    assert results[0]["action_detail"]["via_operational_script"] == "script.allume_lampe_prouvee"
+
+
+def test_retrieval_does_not_follow_unproved_script_effect():
+    entities = [
+        EntityRecord("automation.via_script", "automation", "Entry via script", "on"),
+        EntityRecord("light.proved", "light", "Proved lamp", "off"),
+    ]
+    docs = [
+        AutomationDoc(
+            "Entry via script",
+            """
+alias: Entry via script
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.entry_motion
+    to: "on"
+actions:
+  - action: script.allume_lampe_prouvee
+""",
+            "Validated",
+            201,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    base = build_operational_graph(reconciliation)
+    results = retrieve_automation_chains(
+        "allume lampe proved", entities, reconciliation, base
+    )
+    assert results == []
