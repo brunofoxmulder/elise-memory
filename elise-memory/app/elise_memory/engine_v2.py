@@ -184,7 +184,16 @@ class ReconciliationResult:
     current_without_document: tuple[EntityRecord, ...]
 
 
-@dataclass(frozen=True)\nclass OperationalScript:\n    """Executable script/Pyscript body from an explicitly trusted operational source."""\n\n    service: str\n    production: str\n    source: str\n\n\n@dataclass(frozen=True)
+@dataclass(frozen=True)
+class OperationalScript:
+    """Executable script/Pyscript body from an explicitly trusted operational source."""
+
+    service: str
+    production: str
+    source: str
+
+
+@dataclass(frozen=True)
 class GraphEdge:
     subject: str
     predicate: str
@@ -357,7 +366,9 @@ def _production_aliases(production: str) -> tuple[str, ...]:
     except Exception:
         # A broken Production row must not become authoritative. The fallback is
         # only used for reconciliation diagnostics and does not parse behavior.
-        match = re.search(r"(?:^|\n)\s*alias:\s*([^\n]+)", production)
+        match = re.search(r"(?:^|
+)\s*alias:\s*([^
+]+)", production)
         if match:
             aliases.append(match.group(1).strip().strip("'\""))
     return tuple(dict.fromkeys(aliases))
