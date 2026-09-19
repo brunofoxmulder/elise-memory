@@ -1323,3 +1323,125 @@ actions:
         and edge.object == "light.bathroom"
         for edge in graph
     )
+
+
+
+def test_string_template_condition_is_not_dropped():
+    entities = _entities() + [
+        EntityRecord("automation.template_branch", "automation", "Template branch", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Template branch",
+            """
+alias: Template branch
+triggers:
+  - trigger: time
+    at: "18:00:00"
+actions:
+  - variables:
+      ready: true
+  - choose:
+      - conditions: "{{ ready }}"
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: light.entry
+""",
+            "Validated",
+            70,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    result = retrieve_automation_chains(
+        "what turns on the entry lamp", entities, reconciliation, graph
+    )
+    item = next(x for x in result if x["automation_entity_id"] == "automation.template_branch")
+    assert any(
+        ctx["predicate"] == "LOCAL_GUARD"
+        and ctx["subject"] == "template_condition"
+        and "ready" in ctx["detail"].get("expression", "")
+        for ctx in item["context"]
+    )
+
+
+def test_dotted_states_reference_is_extracted_from_template_guard():
+    entities = _entities() + [
+        EntityRecord("automation.dotted_template", "automation", "Dotted template", "on"),
+        EntityRecord("sensor.outdoor_temp", "sensor", "Outdoor temp", "18"),
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Dotted template",
+            """
+alias: Dotted template
+triggers:
+  - trigger: time
+    at: "12:00:00"
+conditions:
+  - condition: template
+    value_template: "{{ states.sensor.outdoor_temp.state | float(0) < 20 }}"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.entry
+""",
+            "Validated",
+            71,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    assert any(
+        edge.subject == "sensor.outdoor_temp"
+        and edge.predicate == "GUARDS"
+        and edge.object == "automation.dotted_template"
+        for edge in graph
+    )
+    assert any(
+        edge.subject == "template_condition"
+        and edge.predicate == "GUARDS"
+        and edge.object == "automation.dotted_template"
+        for edge in graph
+    )
+
+
+def test_dynamic_states_collection_template_remains_visible_as_guard():
+    entities = _entities() + [
+        EntityRecord("automation.dynamic_batteries", "automation", "Dynamic batteries", "on")
+    ]
+    docs = _docs() + [
+        AutomationDoc(
+            "Dynamic batteries",
+            """
+alias: Dynamic batteries
+triggers:
+  - trigger: time
+    at: "18:00:00"
+conditions:
+  - condition: template
+    value_template: >
+      {% set low = namespace(found=false) %}
+      {% for s in states.sensor if 'battery' in s.entity_id %}
+        {% if s.state | int(100) < 20 %}{% set low.found = true %}{% endif %}
+      {% endfor %}
+      {{ low.found }}
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      message: Batteries low
+""",
+            "Validated",
+            72,
+        )
+    ]
+    reconciliation = reconcile_automations(entities, docs)
+    graph = build_operational_graph(reconciliation)
+    guard = next(
+        edge for edge in graph
+        if edge.subject == "template_condition"
+        and edge.predicate == "GUARDS"
+        and edge.object == "automation.dynamic_batteries"
+    )
+    assert "states.sensor" in json.loads(guard.detail)["expression"]
