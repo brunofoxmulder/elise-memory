@@ -595,7 +595,7 @@ mode: single
     item = next(x for x in result if x["automation_entity_id"] == "automation.salon_window_open")
     assert item["source_entity_id"] == "binary_sensor.fenetre_porte_contact"
     assert item["target"] == "cover.volet_salon_2"
-    assert item["effect"] == "set_cover_position"
+    assert item["effect"] == "open"
     assert item["action_detail"]["data"]["position"] == 100
 
 
@@ -886,7 +886,7 @@ mode: single
     )
     item = next(x for x in result if x["automation_entity_id"] == "automation.salon_window_open")
     assert item["target"] == "cover.volet_salon_2"
-    assert item["effect"] == "set_cover_position"
+    assert item["effect"] == "open"
     assert item["action_detail"]["data"]["position"] == 100
 
 
@@ -928,7 +928,7 @@ mode: single
     )
     item = next(x for x in result if x["automation_entity_id"] == "automation.salon_night_close")
     assert item["target"] == "cover.volet_salon_2"
-    assert item["effect"] == "close_cover"
+    assert item["effect"] == "close"
     assert item["trigger_detail"]["from"] == "on"
     assert item["trigger_detail"]["to"] == "off"
     assert not any(x["effect"] in {"open_cover", "set_cover_position"} for x in result)
@@ -1018,14 +1018,14 @@ mode: single
     )
     opened_item = next(x for x in opened if x["automation_entity_id"] == "automation.terrace_open")
     assert opened_item["target"] == "cover.volet_terrasse_2"
-    assert opened_item["effect"] == "set_cover_position"
+    assert opened_item["effect"] == "open"
     assert opened_item["action_detail"]["data"]["position"] == 100
 
     closed = retrieve_triggered_chains(
         "quand la porte-fenêtre terrasse se ferme", entities, reconciliation, resolved
     )
     close_item = next(x for x in closed if x["automation_entity_id"] == "automation.terrace_night_close")
-    assert close_item["effect"] == "close_cover"
+    assert close_item["effect"] == "close"
     assert close_item["trigger_detail"]["from"] == "on"
     assert close_item["trigger_detail"]["to"] == "off"
     assert close_item["target"] == "cover.volet_terrasse_2"
