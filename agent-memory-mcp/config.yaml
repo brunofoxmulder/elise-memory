@@ -1,15 +1,19 @@
 name: Agent Memory MCP
-version: "0.1.0"
+description: Test minimal Agent Memory MCP pour Home Assistant
+version: "0.1.1"
 slug: agent_memory_mcp
-description: Test minimal d'Agent Memory MCP pour Home Assistant
-url: https://github.com/ipiton/agent-memory-mcp
+init: false
 arch:
   - amd64
 startup: application
 boot: auto
-init: false
 host_network: true
+ports:
+  18080/tcp: 18080
+ports_description:
+  18080/tcp: MCP Streamable HTTP
 map:
-  - addon_config:rw
+  - type: addon_config
+    read_only: false
 options: {}
 schema: {}
