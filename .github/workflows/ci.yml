@@ -54,10 +54,12 @@ jobs:
           PY
           docker rm -f elise-memory-disabled
       - name: Smoke test missing credentials is non-fatal
+        env:
+          ELISE_MEMORY_ADMIN_TOKEN: ci-only-dummy-administration-token-not-for-deployment
         run: |
           mkdir -p .ci/data-missing .ci/config-missing
           printf '%s' '{"sync_enabled":true,"sheet_home_assistant_id":"ha","sheet_index_id":"index","sheet_automations_id":"automations","sheet_scripts_id":"scripts"}' > .ci/data-missing/options.json
-          docker run -d --name elise-memory-missing -p 18100:8099             -v "$PWD/.ci/data-missing:/data"             -v "$PWD/.ci/config-missing:/config:ro"             elise-memory-dev17
+          docker run -d --name elise-memory-missing -p 18100:8099 -e ELISE_MEMORY_ADMIN_TOKEN             -v "$PWD/.ci/data-missing:/data"             -v "$PWD/.ci/config-missing:/config:ro"             elise-memory-dev17
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:18100/health > .ci/health-missing.json && break
             sleep 1
@@ -68,7 +70,12 @@ jobs:
           assert data == {"status":"ok","mode":"isolated","version":"0.1.0-dev.17","sync":"not_ready"}, data
           PY
           test "$(docker inspect -f '{{.State.Running}}' elise-memory-missing)" = "true"
-          code=$(curl -sS -o .ci/manual-sync.json -w '%{http_code}' -X POST http://127.0.0.1:18100/v1/sync/run)
+          code=$(curl -sS -o .ci/manual-sync.json -w '%{http_code}' -H "Authorization: Bearer $ELISE_MEMORY_ADMIN_TOKEN" -X POST http://127.0.0.1:18100/v1/sync/run)
           test "$code" = "503"
+          python - <<'PY'
+          import json
+          data=json.load(open(".ci/manual-sync.json", encoding="utf-8"))
+          assert data["detail"] != "administrative writes disabled", data
+          PY
           test "$(docker inspect -f '{{.State.Running}}' elise-memory-missing)" = "true"
           docker rm -f elise-memory-missing

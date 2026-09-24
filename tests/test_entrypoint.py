@@ -61,3 +61,22 @@ def test_dev17_version_is_aligned_across_shipped_artifacts():
     pyproject = (SHIPPED_APP / "pyproject.toml").read_text(encoding="utf-8")
     assert 'version: "0.1.0-dev.17"' in manifest
     assert 'version = "0.1.0-dev.17"' in pyproject
+
+
+def test_mcp_is_internal_and_announced_through_supervisor():
+    manifest = (ROOT / "elise-memory" / "config.yaml").read_text(encoding="utf-8")
+    discovery = (
+        ROOT
+        / "elise-memory"
+        / "rootfs"
+        / "etc"
+        / "services.d"
+        / "elise-memory"
+        / "discovery"
+    ).read_text(encoding="utf-8")
+
+    assert "homeassistant: 2026.2.0" in manifest
+    assert "discovery:\n  - mcp" in manifest
+    assert "8099/tcp: null" in manifest
+    assert 'bashio::discovery "mcp"' in discovery
+    assert 'url "http://$(hostname):8099/mcp/"' in discovery

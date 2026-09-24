@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-MemoryKind = Literal["house", "temporal"]
+MemoryKind = Literal["house", "conversation", "temporal"]
 
 
 class MemoryCreate(BaseModel):
