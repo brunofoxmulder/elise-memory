@@ -56,3 +56,15 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_embedding_mock.py
       - name: Verify document indexing and refresh with a simulated API
         run: python3 agent-memory-mcp/tests/test_rag_mock.py
+      - name: Reject a watcher without automatic indexing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/amem-invalid-data" "${RUNNER_TEMP}/amem-invalid-config"
+          printf '%s' '{"rag_enabled":true,"rag_auto_index":false,"rag_file_watcher":true,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-invalid-data/options.json"
+          set +e
+          docker run --rm -v "${RUNNER_TEMP}/amem-invalid-data:/data" -v "${RUNNER_TEMP}/amem-invalid-config:/config" agent-memory-candidate > "${RUNNER_TEMP}/amem-invalid.log" 2>&1
+          code=$?
+          set -e
+          test "$code" -ne 0
+          grep -q 'surveillance nécessite' "${RUNNER_TEMP}/amem-invalid.log"
