@@ -8,12 +8,15 @@ configuration:
   embedding_provider:
     name: Fournisseur d’embeddings
     description: API compatible OpenAI ou Ollama local. Changer peut déclencher une nouvelle vectorisation.
+  embedding_dimensions:
+    name: Dimensions des vecteurs
+    description: 1024 par défaut ; modifier peut déclencher une nouvelle vectorisation. Ollama BGE-M3 nécessite 1024.
   embedding_api_url:
     name: Adresse de l’API d’embeddings
     description: Facultatif ; utilise l’API OpenAI par défaut. Fournisseur compatible OpenAI uniquement.
   embedding_api_model:
     name: Modèle d’embeddings de l’API
-    description: Facultatif ; utilise text-embedding-3-small par défaut. Le modèle doit accepter 1024 dimensions.
+    description: Facultatif ; utilise text-embedding-3-small par défaut. Le modèle doit accepter la dimension configurée.
   ollama_url:
     name: Adresse du serveur Ollama local
     description: Facultatif ; serveur local seulement. La candidate utilise uniquement bge-m3 (1024 dimensions).
