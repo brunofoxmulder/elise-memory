@@ -29,6 +29,7 @@ fi
 
 # Le secret est fourni par Supervisor ; ne jamais l'afficher dans les journaux.
 unset OPENAI_API_KEY
+export MCP_EMBEDDING_PROVIDER_LOCK=none
 EMBEDDINGS_ENABLED="$(jq -r '.embeddings_enabled // false' "$OPTIONS")"
 if [ "$EMBEDDINGS_ENABLED" = true ]; then
   PROVIDER="$(jq -r '.embedding_provider // "openai_compatible"' "$OPTIONS")"
@@ -43,9 +44,11 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
       export OPENAI_BASE_URL="$(jq -r '.embedding_api_url // "https://api.openai.com/v1"' "$OPTIONS")"
       export OPENAI_EMBEDDING_MODEL="$(jq -r '.embedding_api_model // "text-embedding-3-small"' "$OPTIONS")"
       export MCP_EMBEDDING_MODE=auto
+      export MCP_EMBEDDING_PROVIDER_LOCK=openai
       ;;
     ollama)
       export MCP_EMBEDDING_MODE=local-only
+      export MCP_EMBEDDING_PROVIDER_LOCK=ollama
       export OLLAMA_BASE_URL="$(jq -r '.ollama_url // "http://127.0.0.1:11434"' "$OPTIONS")"
       ;;
     *) echo 'Fournisseur d’embeddings inconnu.' >&2; exit 1 ;;
