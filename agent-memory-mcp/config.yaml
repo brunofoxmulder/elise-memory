@@ -27,6 +27,7 @@ options:
   rag_auto_index: false
   rag_file_watcher: false
   stats_enabled: false
+  sediment_enabled: false
 schema:
   openai_api_key: "password?"
   embeddings_enabled: bool
@@ -41,3 +42,4 @@ schema:
   rag_auto_index: bool
   rag_file_watcher: bool
   stats_enabled: bool
+  sediment_enabled: bool
