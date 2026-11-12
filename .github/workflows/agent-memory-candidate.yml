@@ -74,3 +74,23 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_ollama_mock.py
       - name: Verify provider lock and disabled mode
         run: python3 agent-memory-mcp/tests/test_provider_lock.py
+      - name: Check proposed private-network variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check agent-memory-mcp/tests/proposition-reseau-interne.patch
+          mkdir -p "${RUNNER_TEMP}/amem-private-data" "${RUNNER_TEMP}/amem-private-config"
+          printf '%s' '{"rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-private-data/options.json"
+          docker network create amem-private
+          trap 'docker rm -f amem-private-server >/dev/null 2>&1 || true; docker network rm amem-private >/dev/null 2>&1 || true' EXIT
+          docker run -d --name amem-private-server --network amem-private --network-alias memory \
+            -v "${RUNNER_TEMP}/amem-private-data:/data" -v "${RUNNER_TEMP}/amem-private-config:/config" agent-memory-candidate
+          test -z "$(docker port amem-private-server)"
+          docker pull curlimages/curl:8.11.1
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"private-network-test","version":"1"}}}'
+          for client in hermes-simule assist-simule; do
+            docker run --rm --network amem-private --name "$client" curlimages/curl:8.11.1 \
+              --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
+              -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+              --data "$request" http://memory:18080/mcp | grep -q '"result"'
+          done
