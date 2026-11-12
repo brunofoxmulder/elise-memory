@@ -26,9 +26,6 @@ configuration:
   rag_enabled:
     name: Recherche documentaire RAG
     description: Autorise la recherche dans les documents configurés.
-  rag_document_source:
-    name: Dossier des documents
-    description: Choisir le dossier privé de l’app ou /share/memory-documents, à créer auparavant. Le dossier partagé est monté en lecture seule.
   rag_auto_index:
     name: Indexation automatique
     description: Vérifie les documents au démarrage et est nécessaire à la surveillance.
