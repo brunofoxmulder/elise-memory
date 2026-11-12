@@ -32,6 +32,7 @@ schema:
   embedding_api_url: "url?"
   embedding_api_model: "str?"
   ollama_url: "url?"
+  ollama_model: "str?"
   rag_enabled: bool
   rag_auto_index: bool
   rag_file_watcher: bool
