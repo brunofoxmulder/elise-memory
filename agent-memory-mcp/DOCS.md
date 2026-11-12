@@ -16,7 +16,9 @@ La candidate déclare une mise à jour nécessitant l'attention de l'utilisateur
 pour éviter une installation automatique. Selon la documentation Home Assistant,
 une sauvegarde de l'application inclut son dossier de configuration public ;
 il faut néanmoins vérifier la sauvegarde et sa restauration sur l'installation
-réelle. La sauvegarde à froid arrête l'application pendant sa création.
+réelle. La sauvegarde à froid arrête l'application pendant sa création. La
+candidate laisse jusqu'à 60 secondes pour l'arrêt ; cela ne garantit pas à lui
+seul que la fermeture ou la sauvegarde réussisse.
 
 ## Vectorisation
 
