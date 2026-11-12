@@ -74,6 +74,24 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_ollama_mock.py
       - name: Verify provider lock and disabled mode
         run: python3 agent-memory-mcp/tests/test_provider_lock.py
+      - name: Check shared-document directory selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/share-data" "${RUNNER_TEMP}/share-config" "${RUNNER_TEMP}/share-fixture/memory-documents"
+          printf '%s' '{"rag_document_source":"share","rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false}' > "${RUNNER_TEMP}/share-data/options.json"
+          docker run -d --name amem-share -v "${RUNNER_TEMP}/share-data:/data" -v "${RUNNER_TEMP}/share-config:/config" -v "${RUNNER_TEMP}/share-fixture:/share:ro" agent-memory-candidate
+          trap 'docker rm -f amem-share >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-share sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_ROOT=/share/memory-documents'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-share sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_ROOT=/share/memory-documents'"
+          if docker exec amem-share sh -c 'touch /share/memory-documents/write-test' 2>/dev/null; then exit 1; fi
+          docker rm -f amem-share >/dev/null
+          rmdir "${RUNNER_TEMP}/share-fixture/memory-documents"
+          if docker run --rm -v "${RUNNER_TEMP}/share-data:/data" -v "${RUNNER_TEMP}/share-config:/config" -v "${RUNNER_TEMP}/share-fixture:/share:ro" agent-memory-candidate > "${RUNNER_TEMP}/share-missing.log" 2>&1; then exit 1; fi
+          grep -q 'Dossier /share/memory-documents introuvable' "${RUNNER_TEMP}/share-missing.log"
       - name: Check shared memory between simulated clients
         run: python3 agent-memory-mcp/tests/test_shared_clients.py
       - name: Check proposed private-network variant
