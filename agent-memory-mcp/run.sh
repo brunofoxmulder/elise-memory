@@ -24,6 +24,8 @@ export MCP_RAG_ENABLED="$(jq -r '.rag_enabled // false' "$OPTIONS")"
 export MCP_RAG_AUTO_INDEX="$(jq -r '.rag_auto_index // false' "$OPTIONS")"
 export MCP_RAG_FILE_WATCHER="$(jq -r '.rag_file_watcher // false' "$OPTIONS")"
 export MCP_STATS_ENABLED="$(jq -r '.stats_enabled // false' "$OPTIONS")"
+# Préserver true par défaut tout en respectant explicitement false.
+export MCP_SESSION_TRACKING_ENABLED="$(jq -r 'if .session_tracking_enabled == null then true else .session_tracking_enabled end' "$OPTIONS")"
 # Classement optionnel, sans cycle automatique de modification des souvenirs.
 export MCP_SEDIMENT_ENABLED="$(jq -r '.sediment_enabled // false' "$OPTIONS")"
 export MCP_SEDIMENT_SCHEDULE_INTERVAL=0
