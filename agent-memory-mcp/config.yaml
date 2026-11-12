@@ -1,6 +1,9 @@
 name: Agent Memory MCP
 description: Mémoire partagée — candidate non installable en production sans recette
 version: "0.1.2-dev.1"
+stage: experimental
+breaking_versions:
+  - "0.1.2-dev.1"
 slug: agent_memory_mcp
 init: false
 arch:
