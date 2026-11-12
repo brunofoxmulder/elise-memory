@@ -47,3 +47,6 @@ configuration:
   retrieval_strict:
     name: Diagnostic strict des recherches
     description: Pour les essais ; renvoie une erreur au lieu de certains replis. Peut empêcher des réponses et concerne aussi d’autres recherches. Désactivé en usage courant.
+  memory_preview_characters:
+    name: Longueur maximale des souvenirs transmis
+    description: Nombre de caractères par souvenir transmis aux assistants. 4096 par défaut ; augmenter peut ralentir et accroître les coûts.
