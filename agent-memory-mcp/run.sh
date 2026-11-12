@@ -31,12 +31,25 @@ fi
 unset OPENAI_API_KEY
 EMBEDDINGS_ENABLED="$(jq -r '.embeddings_enabled // false' "$OPTIONS")"
 if [ "$EMBEDDINGS_ENABLED" = true ]; then
-  OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
-  if [ -z "$OPENAI_API_KEY" ]; then
-    echo 'Une clé API OpenAI est nécessaire pour activer les embeddings.' >&2
-    exit 1
-  fi
-  export OPENAI_API_KEY OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+  PROVIDER="$(jq -r '.embedding_provider // "openai_compatible"' "$OPTIONS")"
+  case "$PROVIDER" in
+    openai_compatible)
+      OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
+      if [ -z "$OPENAI_API_KEY" ]; then
+        echo 'Une clé API est nécessaire pour le fournisseur compatible OpenAI.' >&2
+        exit 1
+      fi
+      export OPENAI_API_KEY
+      export OPENAI_BASE_URL="$(jq -r '.embedding_api_url // "https://api.openai.com/v1"' "$OPTIONS")"
+      export OPENAI_EMBEDDING_MODEL="$(jq -r '.embedding_api_model // "text-embedding-3-small"' "$OPTIONS")"
+      export MCP_EMBEDDING_MODE=auto
+      ;;
+    ollama)
+      export MCP_EMBEDDING_MODE=local-only
+      export OLLAMA_BASE_URL="$(jq -r '.ollama_url // "http://127.0.0.1:11434"' "$OPTIONS")"
+      ;;
+    *) echo 'Fournisseur d’embeddings inconnu.' >&2; exit 1 ;;
+  esac
   export MCP_EMBEDDING_DIMENSION=1024
 fi
 unset JINA_API_KEY
