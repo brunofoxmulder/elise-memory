@@ -68,3 +68,5 @@ jobs:
           set -e
           test "$code" -ne 0
           grep -q 'surveillance nécessite' "${RUNNER_TEMP}/amem-invalid.log"
+      - name: Check automatic re-embedding at startup
+        run: python3 agent-memory-mcp/tests/test_startup_reembed.py
