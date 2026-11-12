@@ -16,7 +16,7 @@ class FakeOllama(BaseHTTPRequestHandler):
     def do_POST(self):
         payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         events.append((self.path, payload.get("model")))
-        data = json.dumps({"embedding": [1.0] + [0.0] * 1023}).encode()
+        data = json.dumps({"embedding": [1.0] + [0.0] * 767}).encode()
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
 
     def log_message(self, *_args):
@@ -45,7 +45,7 @@ threading.Thread(target=fake.serve_forever, daemon=True).start()
 with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp); data = root / "data"; config = root / "config"
     data.mkdir(); config.mkdir()
-    (data / "options.json").write_text(json.dumps({"embeddings_enabled": True, "embedding_provider": "ollama", "ollama_url": "http://127.0.0.1:18183", "openai_api_key": "UNUSED_TEST_KEY", "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
+    (data / "options.json").write_text(json.dumps({"embeddings_enabled": True, "embedding_provider": "ollama", "ollama_url": "http://127.0.0.1:18183", "ollama_model": "modele-fictif:latest", "embedding_dimensions": 768, "openai_api_key": "UNUSED_TEST_KEY", "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
     try:
         docker("run", "-d", "--name", "amem-ollama-mock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
         for _ in range(60):
@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory() as tmp:
         else:
             raise RuntimeError("MCP server did not start")
         call("tools/call", {"name": "memory", "arguments": {"action": "store", "title": "Fait fictif", "content": "La serre fictive ouvre a sept heures.", "type": "semantic"}}, 2)
-        assert events and all(path == "/api/embeddings" and model == "bge-m3:latest" for path, model in events), events
+        assert events and all(path == "/api/embeddings" and model == "modele-fictif:latest" for path, model in events), events
         stats = json.dumps(call("tools/call", {"name": "memory", "arguments": {"action": "stats"}}, 3))
         assert "ollama:" in stats.lower(), stats
         print("Candidate used simulated Ollama in local-only mode")
