@@ -12,6 +12,12 @@ l'identifiant d'application et le chemin de données de la version 0.1.1.
 Une mise à jour avec un souvenir fictif a été testée ; ce n'est pas une
 restauration Home Assistant réelle.
 
+La candidate déclare une mise à jour nécessitant l'attention de l'utilisateur
+pour éviter une installation automatique. Selon la documentation Home Assistant,
+une sauvegarde de l'application inclut son dossier de configuration public ;
+il faut néanmoins vérifier la sauvegarde et sa restauration sur l'installation
+réelle. La sauvegarde à froid arrête l'application pendant sa création.
+
 ## Vectorisation
 
 Les vecteurs permettent de rechercher les souvenirs par le sens. Cette fonction
