@@ -5,6 +5,10 @@ l'installation HAOS réelle. Branche candidate Memory 0.1.2-dev.1.
 
 ## But
 
+Bruno confirme qu'Hermès est chargé de lire et digérer les documents, puis de
+préparer et gérer les souvenirs structurés dans Memory, avec leur source. Les
+formats qu'Hermès sait traiter et son accès aux documents restent à vérifier.
+
 Hermès et les agents Assist peuvent utiliser le même serveur et la même base
 de souvenirs, indépendamment de leurs modèles conversationnels. Bruno confirme
 qu'Hermès doit pouvoir consulter, créer, modifier et supprimer les souvenirs.
