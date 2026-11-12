@@ -29,6 +29,7 @@ options:
   session_tracking_enabled: true
 schema:
   openai_api_key: "password?"
+  mcp_auth_token: "password?"
   embeddings_enabled: bool
   embedding_provider: "list(openai_compatible|ollama)"
   embedding_dimensions: "int(1,4096)"
