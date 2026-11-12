@@ -44,14 +44,15 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
     openai_compatible)
       OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
       if [ -z "$OPENAI_API_KEY" ]; then
-        echo 'Une clé API est nécessaire pour le fournisseur compatible OpenAI.' >&2
-        exit 1
+        # Garder le service de mémoire disponible en recherche textuelle.
+        echo 'Clé API absente : vectorisation indisponible, recherche textuelle utilisée.' >&2
+      else
+        export OPENAI_API_KEY
+        export OPENAI_BASE_URL="$(jq -r '.embedding_api_url // "https://api.openai.com/v1"' "$OPTIONS")"
+        export OPENAI_EMBEDDING_MODEL="$(jq -r '.embedding_api_model // "text-embedding-3-small"' "$OPTIONS")"
+        export MCP_EMBEDDING_MODE=auto
+        export MCP_EMBEDDING_PROVIDER_LOCK=openai
       fi
-      export OPENAI_API_KEY
-      export OPENAI_BASE_URL="$(jq -r '.embedding_api_url // "https://api.openai.com/v1"' "$OPTIONS")"
-      export OPENAI_EMBEDDING_MODEL="$(jq -r '.embedding_api_model // "text-embedding-3-small"' "$OPTIONS")"
-      export MCP_EMBEDDING_MODE=auto
-      export MCP_EMBEDDING_PROVIDER_LOCK=openai
       ;;
     ollama)
       export MCP_EMBEDDING_MODE=local-only
