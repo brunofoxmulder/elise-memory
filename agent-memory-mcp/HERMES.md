@@ -51,16 +51,16 @@ mcp_servers:
   agent_memory:
     enabled: false
     url: "http://172.30.32.1:18080/mcp"
-    tools:
-      include: [memory, search]
-      resources: false
-      prompts: false
 ```
 
 L'adresse est celle observée lors du diagnostic et doit être confirmée depuis
-Hermès. La liste présente la mémoire et la recherche documentaire ; `memory`
-regroupe lecture, création, modification et suppression, conformément au choix
-de Bruno. Ce filtrage ne protège pas le serveur des autres clients réseau.
+Hermès. Aucun filtre d'outil n'est imposé dans cet exemple : Hermès peut
+ainsi découvrir les outils que Memory expose, y compris l'administration et
+la maintenance. `memory` regroupe lecture, création, modification et
+suppression, conformément au choix de Bruno. La disponibilité de chaque outil
+reste conditionnée par la configuration de Memory. Cela ne protège pas le
+serveur des autres clients réseau ; l'outil `repo` peut exposer des fichiers
+du répertoire configuré.
 
 ## Passage de relais depuis Élise
 
