@@ -1,0 +1,16 @@
+configuration:
+  openai_api_key:
+    name: Clé API OpenAI
+    description: Clé utilisée pour les embeddings. Ne la partage pas dans les journaux.
+  rag_enabled:
+    name: Recherche documentaire RAG
+    description: Autorise la recherche dans les documents configurés.
+  rag_auto_index:
+    name: Indexation automatique
+    description: Vérifie les documents au démarrage et est nécessaire à la surveillance.
+  rag_file_watcher:
+    name: Surveillance des documents
+    description: Nécessite le RAG et l’indexation automatique.
+  stats_enabled:
+    name: Statistiques d’utilisation
+    description: Enregistre localement des statistiques sur les appels.
