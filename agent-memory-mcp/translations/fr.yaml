@@ -2,6 +2,9 @@ configuration:
   openai_api_key:
     name: Clé API du fournisseur compatible OpenAI
     description: Clé utilisée par le fournisseur API choisi ; inutile pour Ollama local.
+  mcp_auth_token:
+    name: Jeton d’accès MCP facultatif
+    description: Attention : activer peut couper Assist s’il ne sait pas envoyer le jeton. Le HTTP ne chiffre pas les données. À utiliser après vérification des clients.
   embeddings_enabled:
     name: Activer les embeddings
     description: Attention : au démarrage, les souvenirs existants sans vecteur peuvent être envoyés au fournisseur sélectionné. Activer seulement après sauvegarde et validation.
