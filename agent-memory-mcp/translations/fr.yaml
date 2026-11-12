@@ -38,3 +38,6 @@ configuration:
   stats_enabled:
     name: Statistiques d’utilisation
     description: Enregistre localement des statistiques sur les appels.
+  sediment_enabled:
+    name: Classement des souvenirs par niveau
+    description: Modifie la priorité de certains souvenirs lors du rappel. Aucun cycle automatique n’est activé par cette option.
