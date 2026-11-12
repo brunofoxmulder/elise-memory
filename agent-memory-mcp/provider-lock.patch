@@ -8,7 +8,7 @@
  	"strings"
  	"sync"
  	"time"
-@@ -333,6 +334,21 @@
+@@ -333,6 +334,25 @@
  	out := make([]providerCandidate, 0, 5)
  	add := func(p providerAdapter) {
  		name := p.name()
@@ -21,7 +21,11 @@
 +				return
 +			}
 +		case "ollama":
-+			if name != "ollama/bge-m3" {
++			model := strings.TrimSpace(os.Getenv("MCP_OLLAMA_EMBEDDING_MODEL"))
++			if model == "" {
++				model = defaultOllamaPrimaryModel
++			}
++			if name != "ollama/"+strings.TrimSuffix(model, ":latest") {
 +				return
 +			}
 +		default:
@@ -30,3 +34,22 @@
  		h := e.healthFor(name)
  		ok, retried := h.available()
  		if !ok {
+@@ -373,8 +393,16 @@
+ 		add(llamaCPPAdapter{embedder: e})
+ 	}
+ 	if e.config.OllamaBaseURL != "" {
+-		add(ollamaAdapter{embedder: e, model: defaultOllamaPrimaryModel})
+-		add(ollamaAdapter{embedder: e, model: defaultOllamaBackupModel})
++		model := defaultOllamaPrimaryModel
++		if os.Getenv("MCP_EMBEDDING_PROVIDER_LOCK") == "ollama" {
++			if selected := strings.TrimSpace(os.Getenv("MCP_OLLAMA_EMBEDDING_MODEL")); selected != "" {
++				model = selected
++			}
++		}
++		add(ollamaAdapter{embedder: e, model: model})
++		if os.Getenv("MCP_EMBEDDING_PROVIDER_LOCK") != "ollama" {
++			add(ollamaAdapter{embedder: e, model: defaultOllamaBackupModel})
++		}
+ 	}
+ 	return out
+ }
