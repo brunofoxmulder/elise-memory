@@ -1,9 +1,9 @@
 name: Agent Memory MCP
 description: Mémoire partagée — candidate non installable en production sans recette
-version: "0.1.2-dev.1"
+version: "0.1.2-dev.2"
 stage: experimental
 breaking_versions:
-  - "0.1.2-dev.1"
+  - "0.1.2-dev.2"
 slug: agent_memory_mcp
 init: false
 timeout: 60
@@ -24,6 +24,7 @@ options:
   embeddings_enabled: false
   embedding_provider: openai_compatible
   embedding_dimensions: 1024
+  memory_preview_characters: 4096
   rag_enabled: false
   rag_auto_index: false
   rag_file_watcher: false
@@ -37,6 +38,7 @@ schema:
   embeddings_enabled: bool
   embedding_provider: "list(openai_compatible|ollama)"
   embedding_dimensions: "int(1,4096)"
+  memory_preview_characters: "int(300,16000)"
   embedding_api_url: "url?"
   embedding_api_model: "str?"
   ollama_url: "url?"
