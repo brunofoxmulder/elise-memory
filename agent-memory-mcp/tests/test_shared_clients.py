@@ -45,6 +45,17 @@ with tempfile.TemporaryDirectory() as tmp:
         else:
             raise RuntimeError("server did not start")
         call("assist-simule", "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "assist-simule", "version": "1"}}, 2)
+        # Garder accessibles les capacités de maintenance attendues, sans
+        # exécuter de mutation de maintenance sur la base fictive.
+        tools_list = call("hermes-simule", "tools/list", {}, 20)["tools"]
+        available = {item["name"]: item for item in tools_list}
+        expected = {"repo", "memory", "memory_admin", "engineering", "search",
+                    "session", "project_bank_view", "steward_run", "steward_report",
+                    "steward_policy", "steward_status", "drift_scan",
+                    "verification_candidates", "steward_inbox", "steward_inbox_resolve"}
+        assert expected <= available.keys(), f"missing tools: {expected - available.keys()}"
+        actions = set(available["memory"]["inputSchema"]["properties"]["action"]["enum"])
+        assert {"store", "recall", "update", "delete", "list", "stats"} <= actions
         created = tool("hermes-simule", "store", {"title": "Test partage fictif", "content": "lilas-fictif-108", "type": "semantic", "context": "test-partage"}, 3)
         match = re.search(r"(?m)^- ID:\s*(\S+)", created["content"][0]["text"])
         if not match:
