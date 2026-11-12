@@ -116,8 +116,11 @@ pour cette vérification.
 ## Connexion et sécurité
 
 L'endpoint de la candidate est `http://homeassistant.local:18080/mcp`.
-**L'accès MCP reste actuellement sans authentification**, pour préserver la
-compatibilité avec le client existant. Toute personne ou machine pouvant
+**L'accès MCP reste sans authentification par défaut**, pour préserver la
+compatibilité avec le client existant. La candidate propose un champ masqué
+de jeton MCP facultatif : le renseigner exige que tous les clients présentent
+ce jeton et peut couper Assist. Vérifier d'abord leur compatibilité.
+Le jeton sur HTTP n'assure pas le chiffrement des échanges. Toute personne ou machine pouvant
 joindre ce port peut potentiellement lire ou modifier la mémoire et accéder
 aux autres outils exposés. La protection réseau et l'authentification restent
 à résoudre avant déploiement ; ne pas exposer ce port sur Internet.
