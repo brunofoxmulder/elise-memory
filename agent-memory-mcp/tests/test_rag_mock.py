@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory() as tmp:
     docs.mkdir()
     source = docs / "serre.md"
     source.write_text(f"# Serre fictive\nL'arrosage de la serre utilise {OLD}.\n")
-    (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "rag_enabled": True, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
+    (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "embedding_api_url": "http://127.0.0.1:18183/v1", "rag_enabled": True, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
     try:
         start(data, config)
         tool("index_documents", {}, 2)
@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert NEW in second and OLD not in second, f"document was not refreshed: {second}"
         docker("stop", "amem-rag-mock")
         docker("rm", "amem-rag-mock")
-        (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "rag_enabled": True, "rag_auto_index": True, "rag_file_watcher": True, "stats_enabled": False}))
+        (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "embedding_api_url": "http://127.0.0.1:18183/v1", "rag_enabled": True, "rag_auto_index": True, "rag_file_watcher": True, "stats_enabled": False}))
         start(data, config)
         time.sleep(3)  # Allow the watcher to establish its initial baseline.
         source.write_text(f"# Serre fictive\nL'arrosage de la serre utilise {WATCHED}.\n")
