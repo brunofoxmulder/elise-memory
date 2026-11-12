@@ -6,9 +6,10 @@ l'installation HAOS réelle. Branche candidate Memory 0.1.2-dev.1.
 ## But
 
 Hermès et les agents Assist peuvent utiliser le même serveur et la même base
-de souvenirs, indépendamment de leurs modèles conversationnels. Hermès peut
-préparer et alimenter les souvenirs ; Assist peut les consulter et également
-les alimenter selon les instructions retenues par Bruno. L'accès d'Hermès à
+de souvenirs, indépendamment de leurs modèles conversationnels. Bruno confirme
+qu'Hermès doit pouvoir consulter, créer, modifier et supprimer les souvenirs.
+Assist peut les consulter et également les alimenter selon les instructions
+retenues par Bruno. L'accès d'Hermès à
 Home Assistant lui-même reste en lecture seule.
 
 La mémoire native et les profils d'Hermès ne deviennent pas automatiquement
@@ -53,22 +54,18 @@ mcp_servers:
 ```
 
 L'adresse est celle observée lors du diagnostic et doit être confirmée depuis
-Hermès. La liste permet de présenter la mémoire et la recherche documentaire ;
-elle ne règle pas les autorisations des actions.
-
-**Attention : `memory` regroupe notamment lecture, écriture, modification et
-suppression.** Autoriser cet outil ne limite donc pas Hermès à la lecture et
-l'écriture. Une règle dans le prompt est une consigne, pas une protection
-technique. La séparation des droits exige un contrôle serveur par action ou
-un intermédiaire adapté ; ne pas présenter ce filtrage comme une sécurité.
+Hermès. La liste présente la mémoire et la recherche documentaire ; `memory`
+regroupe lecture, création, modification et suppression, conformément au choix
+de Bruno. Ce filtrage ne protège pas le serveur des autres clients réseau.
 
 ## Conditions préalables à la mise en service
 
 1. Reconstituer la configuration et les accès réellement en place, sans
    afficher les secrets ; vérifier les sauvegardes et la possibilité de retour
    arrière.
-2. Résoudre l'accès réseau non authentifié et choisir les permissions effectives
-   de chaque client. Maintenir l'accès HA d'Hermès en lecture seule.
+2. Résoudre l'accès réseau non authentifié et vérifier les permissions effectives
+   des clients. Maintenir l'accès HA d'Hermès en lecture seule ; les permissions
+   de gestion de Memory sont distinctes.
 3. Valider la version Hermès, son profil actif, l'adresse joignable et le
    mécanisme d'enregistrement des paramètres MCP ; préserver les autres
    connexions existantes.
@@ -88,14 +85,15 @@ autorisé sur l'installation réelle :
    nouvelle conversation. Garder trace des résultats et des erreurs.
 5. Vérifier que les autres outils MCP et la lecture seule HA restent utilisables.
 
-La suppression des données de test doit être décidée et exécutée séparément.
+La modification et la suppression peuvent être vérifiées en bac à sable sur
+un souvenir fictif clairement identifié, sans toucher aux données de production.
 La disponibilité du RAG et des embeddings dépend de leur configuration propre ;
 un échec réseau ou de modèle ne doit pas être interprété comme un souvenir
 absent. Les appels de rappel peuvent modifier des statistiques d'accès.
 
 ## Ce qui reste à construire ou vérifier
 
-Contrôle d'accès par action, authentification et confidentialité réseau,
+Authentification et confidentialité réseau,
 raccordement effectif d'Hermès et d'Assist, règles de qualité des souvenirs,
 indexation documentaire réelle, sauvegarde et restauration HAOS. PostgreSQL
 n'est pas implémenté dans la candidate actuelle.
