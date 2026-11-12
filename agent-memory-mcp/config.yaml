@@ -16,11 +16,14 @@ ports_description:
 map:
   - type: addon_config
     read_only: false
+  - type: share
+    read_only: true
 options:
   embeddings_enabled: false
   embedding_provider: openai_compatible
   embedding_dimensions: 1024
   rag_enabled: false
+  rag_document_source: app
   rag_auto_index: false
   rag_file_watcher: false
   stats_enabled: false
@@ -34,6 +37,7 @@ schema:
   ollama_url: "url?"
   ollama_model: "str?"
   rag_enabled: bool
+  rag_document_source: "list(app|share)"
   rag_auto_index: bool
   rag_file_watcher: bool
   stats_enabled: bool
