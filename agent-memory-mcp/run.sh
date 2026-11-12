@@ -37,6 +37,7 @@ fi
 unset OPENAI_API_KEY
 export MCP_EMBEDDING_PROVIDER_LOCK=none
 EMBEDDINGS_ENABLED="$(jq -r '.embeddings_enabled // false' "$OPTIONS")"
+EMBEDDING_STATUS="désactivée : recherche textuelle"
 if [ "$EMBEDDINGS_ENABLED" = true ]; then
   PROVIDER="$(jq -r '.embedding_provider // "openai_compatible"' "$OPTIONS")"
   DIMENSIONS="$(jq -r '.embedding_dimensions // 1024' "$OPTIONS")"
@@ -46,17 +47,20 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
       if [ -z "$OPENAI_API_KEY" ]; then
         # Garder le service de mémoire disponible en recherche textuelle.
         echo 'Clé API absente : vectorisation indisponible, recherche textuelle utilisée.' >&2
+        EMBEDDING_STATUS='clé absente : recherche textuelle'
       else
         export OPENAI_API_KEY
         export OPENAI_BASE_URL="$(jq -r '.embedding_api_url // "https://api.openai.com/v1"' "$OPTIONS")"
         export OPENAI_EMBEDDING_MODEL="$(jq -r '.embedding_api_model // "text-embedding-3-small"' "$OPTIONS")"
         export MCP_EMBEDDING_MODE=auto
         export MCP_EMBEDDING_PROVIDER_LOCK=openai
+        EMBEDDING_STATUS='API compatible configurée : disponibilité non vérifiée'
       fi
       ;;
     ollama)
       export MCP_EMBEDDING_MODE=local-only
       export MCP_EMBEDDING_PROVIDER_LOCK=ollama
+      EMBEDDING_STATUS='Ollama configuré : disponibilité non vérifiée'
       export OLLAMA_BASE_URL="$(jq -r '.ollama_url // "http://127.0.0.1:11434"' "$OPTIONS")"
       export MCP_OLLAMA_EMBEDDING_MODEL="$(jq -r '.ollama_model // "bge-m3:latest"' "$OPTIONS")"
       ;;
@@ -66,4 +70,6 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
 fi
 unset JINA_API_KEY
 echo "Agent Memory MCP : démarrage"
+echo "Vectorisation : $EMBEDDING_STATUS"
+echo "Recherche documentaire : $MCP_RAG_ENABLED ; indexation automatique : $MCP_RAG_AUTO_INDEX"
 exec /usr/local/bin/agent-memory-mcp
