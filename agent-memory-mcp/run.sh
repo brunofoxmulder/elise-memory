@@ -11,15 +11,7 @@ export MCP_HTTP_INSECURE_ALLOW_UNAUTHENTICATED=true
 export MCP_MEMORY_ENABLED=true MCP_TOOL_GROUPING=true
 export MCP_DATA_PATH=/config/memory-data
 export MCP_LOG_PATH=/config/memory-data/logs/mcp-diagnostics.log
-# Le dossier partagé est monté en lecture seule ; aucun document n'est créé.
-case "$(jq -r '.rag_document_source // "app"' "$OPTIONS")" in
-  app) export MCP_ROOT=/config/memory-documents ;;
-  share)
-    test -d /share/memory-documents || { echo 'Dossier /share/memory-documents introuvable.' >&2; exit 1; }
-    export MCP_ROOT=/share/memory-documents ;;
-  *) echo 'Source documentaire inconnue.' >&2; exit 1 ;;
-esac
-export MCP_INDEX_DIRS=.
+export MCP_ROOT=/config/memory-documents MCP_INDEX_DIRS=.
 export MCP_RAG_ENABLED="$(jq -r '.rag_enabled // false' "$OPTIONS")"
 export MCP_RAG_AUTO_INDEX="$(jq -r '.rag_auto_index // false' "$OPTIONS")"
 export MCP_RAG_FILE_WATCHER="$(jq -r '.rag_file_watcher // false' "$OPTIONS")"
