@@ -17,6 +17,16 @@ export MCP_RAG_AUTO_INDEX="$(jq -r '.rag_auto_index // false' "$OPTIONS")"
 export MCP_RAG_FILE_WATCHER="$(jq -r '.rag_file_watcher // false' "$OPTIONS")"
 export MCP_STATS_ENABLED="$(jq -r '.stats_enabled // false' "$OPTIONS")"
 
+# Le moteur amont ne démarre la surveillance que si l'indexation auto est active.
+if [ "$MCP_RAG_FILE_WATCHER" = true ] && [ "$MCP_RAG_AUTO_INDEX" != true ]; then
+  echo 'La surveillance nécessite l’indexation automatique.' >&2
+  exit 1
+fi
+if [ "$MCP_RAG_ENABLED" != true ] && { [ "$MCP_RAG_AUTO_INDEX" = true ] || [ "$MCP_RAG_FILE_WATCHER" = true ]; }; then
+  echo 'L’indexation automatique et la surveillance nécessitent le RAG.' >&2
+  exit 1
+fi
+
 # Le secret est fourni par Supervisor ; ne jamais l'afficher dans les journaux.
 OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
 if [ -n "$OPENAI_API_KEY" ]; then
