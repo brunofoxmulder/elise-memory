@@ -69,9 +69,19 @@ d'accès sont à définir avant toute utilisation avec des fichiers réels.
 Les documents indexés et les souvenirs sont deux usages distincts : indexer un
 fichier ne garantit pas que ses informations deviennent des souvenirs
 structurés. La production et la vérification de souvenirs issus de documents
-restent à organiser avec Hermès et Assist. La prise en charge des formats, la
-taille des fichiers et la qualité de leur extraction restent à vérifier ;
-il ne faut pas présumer que tous les fichiers sont intégralement interprétés.
+restent à organiser avec Hermès et Assist. L'examen du moteur épinglé montre qu'il accepte les fichiers Markdown et
+certains fichiers reconnus par des conventions de nom ou de chemin. Il ne
+contient pas d'extracteur de texte PDF, Word ou tableur dans ce parcours.
+Certains noms particuliers peuvent même être classés sans vérifier le format :
+ne pas déposer de fichier binaire dans le dossier indexé avant d'avoir prévu
+une conversion contrôlée.
+
+Le moteur lit le fichier retenu, retire notamment l'en-tête YAML Markdown s'il
+existe, puis découpe son texte en fragments. Le filtrage peut écarter des
+sections jugées peu utiles. Une recherche ne renvoie que des fragments
+sélectionnés : elle ne garantit donc pas l'interprétation complète du document.
+La conversion de documents réels et le contrôle de fidélité restent à
+concevoir ; aucun fichier réel n'a été lu pour cette vérification.
 
 ## Connexion et sécurité
 
