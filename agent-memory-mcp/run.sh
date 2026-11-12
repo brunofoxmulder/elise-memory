@@ -48,13 +48,10 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
       export MCP_EMBEDDING_PROVIDER_LOCK=openai
       ;;
     ollama)
-      if [ "$DIMENSIONS" != 1024 ]; then
-        echo 'Le modèle Ollama BGE-M3 nécessite 1024 dimensions.' >&2
-        exit 1
-      fi
       export MCP_EMBEDDING_MODE=local-only
       export MCP_EMBEDDING_PROVIDER_LOCK=ollama
       export OLLAMA_BASE_URL="$(jq -r '.ollama_url // "http://127.0.0.1:11434"' "$OPTIONS")"
+      export MCP_OLLAMA_EMBEDDING_MODEL="$(jq -r '.ollama_model // "bge-m3:latest"' "$OPTIONS")"
       ;;
     *) echo 'Fournisseur d’embeddings inconnu.' >&2; exit 1 ;;
   esac
