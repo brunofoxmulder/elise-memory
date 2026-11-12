@@ -50,6 +50,16 @@ jobs:
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'OPENAI_EMBEDDING_MODEL=text-embedding-3-small'"
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_EMBEDDING_DIMENSION=1024'"
           if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
+      - name: Verify upgrade from current app with fictional data
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin main
+          mkdir -p "${RUNNER_TEMP}/amem-old-source"
+          git show FETCH_HEAD:agent-memory-mcp/Dockerfile > "${RUNNER_TEMP}/amem-old-source/Dockerfile"
+          git show FETCH_HEAD:agent-memory-mcp/run.sh > "${RUNNER_TEMP}/amem-old-source/run.sh"
+          docker build -t agent-memory-previous "${RUNNER_TEMP}/amem-old-source"
+          python3 agent-memory-mcp/tests/test_upgrade_candidate.py
       - name: Verify synthetic data survives a stopped-copy restore
         run: python3 agent-memory-mcp/tests/test_restore_candidate.py
       - name: Verify embeddings with a local simulated API
