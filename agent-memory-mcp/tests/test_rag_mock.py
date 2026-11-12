@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert NEW in second and OLD not in second, f"document was not refreshed: {second}"
         docker("stop", "amem-rag-mock")
         docker("rm", "amem-rag-mock")
-        (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "rag_enabled": True, "rag_auto_index": False, "rag_file_watcher": True, "stats_enabled": False}))
+        (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "rag_enabled": True, "rag_auto_index": True, "rag_file_watcher": True, "stats_enabled": False}))
         start(data, config)
         time.sleep(3)  # Allow the watcher to establish its initial baseline.
         source.write_text(f"# Serre fictive\nL'arrosage de la serre utilise {WATCHED}.\n")
