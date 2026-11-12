@@ -28,6 +28,7 @@ options:
   rag_file_watcher: false
   stats_enabled: false
   sediment_enabled: false
+  session_tracking_enabled: true
 schema:
   openai_api_key: "password?"
   embeddings_enabled: bool
@@ -43,3 +44,4 @@ schema:
   rag_file_watcher: bool
   stats_enabled: bool
   sediment_enabled: bool
+  session_tracking_enabled: bool
