@@ -33,6 +33,7 @@ export MCP_EMBEDDING_PROVIDER_LOCK=none
 EMBEDDINGS_ENABLED="$(jq -r '.embeddings_enabled // false' "$OPTIONS")"
 if [ "$EMBEDDINGS_ENABLED" = true ]; then
   PROVIDER="$(jq -r '.embedding_provider // "openai_compatible"' "$OPTIONS")"
+  DIMENSIONS="$(jq -r '.embedding_dimensions // 1024' "$OPTIONS")"
   case "$PROVIDER" in
     openai_compatible)
       OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
@@ -47,13 +48,17 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
       export MCP_EMBEDDING_PROVIDER_LOCK=openai
       ;;
     ollama)
+      if [ "$DIMENSIONS" != 1024 ]; then
+        echo 'Le modèle Ollama BGE-M3 nécessite 1024 dimensions.' >&2
+        exit 1
+      fi
       export MCP_EMBEDDING_MODE=local-only
       export MCP_EMBEDDING_PROVIDER_LOCK=ollama
       export OLLAMA_BASE_URL="$(jq -r '.ollama_url // "http://127.0.0.1:11434"' "$OPTIONS")"
       ;;
     *) echo 'Fournisseur d’embeddings inconnu.' >&2; exit 1 ;;
   esac
-  export MCP_EMBEDDING_DIMENSION=1024
+  export MCP_EMBEDDING_DIMENSION="$DIMENSIONS"
 fi
 unset JINA_API_KEY
 echo "Agent Memory MCP : démarrage"
