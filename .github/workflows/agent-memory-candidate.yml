@@ -50,3 +50,5 @@ jobs:
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'OPENAI_EMBEDDING_MODEL=text-embedding-3-small'"
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_EMBEDDING_DIMENSION=1024'"
           if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
+      - name: Verify synthetic data survives a stopped-copy restore
+        run: python3 agent-memory-mcp/tests/test_restore_candidate.py
