@@ -19,6 +19,7 @@ map:
 options:
   embeddings_enabled: false
   embedding_provider: openai_compatible
+  embedding_dimensions: 1024
   rag_enabled: false
   rag_auto_index: false
   rag_file_watcher: false
@@ -27,6 +28,7 @@ schema:
   openai_api_key: "password?"
   embeddings_enabled: bool
   embedding_provider: "list(openai_compatible|ollama)"
+  embedding_dimensions: "int(1,4096)"
   embedding_api_url: "url?"
   embedding_api_model: "str?"
   ollama_url: "url?"
