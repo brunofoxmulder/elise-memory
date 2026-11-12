@@ -20,6 +20,8 @@ else
 fi
 unset MCP_TOKEN
 export MCP_MEMORY_ENABLED=true MCP_TOOL_GROUPING=true
+# Renvoyer assez de contexte sans réponse non bornée ; réglable dans l’app.
+export MCP_MEMORY_PREVIEW_RUNES="$(jq -r '.memory_preview_characters // 4096' "$OPTIONS")"
 export MCP_DATA_PATH=/config/memory-data
 export MCP_LOG_PATH=/config/memory-data/logs/mcp-diagnostics.log
 export MCP_ROOT=/config/memory-documents MCP_INDEX_DIRS=.
