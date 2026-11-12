@@ -28,8 +28,14 @@ if [ "$MCP_RAG_ENABLED" != true ] && { [ "$MCP_RAG_AUTO_INDEX" = true ] || [ "$M
 fi
 
 # Le secret est fourni par Supervisor ; ne jamais l'afficher dans les journaux.
-OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
-if [ -n "$OPENAI_API_KEY" ]; then
+unset OPENAI_API_KEY
+EMBEDDINGS_ENABLED="$(jq -r '.embeddings_enabled // false' "$OPTIONS")"
+if [ "$EMBEDDINGS_ENABLED" = true ]; then
+  OPENAI_API_KEY="$(jq -r '.openai_api_key // empty' "$OPTIONS")"
+  if [ -z "$OPENAI_API_KEY" ]; then
+    echo 'Une clé API OpenAI est nécessaire pour activer les embeddings.' >&2
+    exit 1
+  fi
   export OPENAI_API_KEY OPENAI_EMBEDDING_MODEL=text-embedding-3-small
   export MCP_EMBEDDING_DIMENSION=1024
 fi
