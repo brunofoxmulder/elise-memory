@@ -1,6 +1,6 @@
 name: Agent Memory MCP
-description: Test minimal Agent Memory MCP pour Home Assistant
-version: "0.1.1"
+description: Mémoire partagée — candidate non installable en production sans recette
+version: "0.1.2-dev.1"
 slug: agent_memory_mcp
 init: false
 arch:
@@ -8,6 +8,7 @@ arch:
 startup: application
 boot: auto
 host_network: true
+backup: cold
 ports:
   18080/tcp: 18080
 ports_description:
@@ -15,5 +16,14 @@ ports_description:
 map:
   - type: addon_config
     read_only: false
-options: {}
-schema: {}
+options:
+  rag_enabled: false
+  rag_auto_index: false
+  rag_file_watcher: false
+  stats_enabled: false
+schema:
+  openai_api_key: "password?"
+  rag_enabled: bool
+  rag_auto_index: bool
+  rag_file_watcher: bool
+  stats_enabled: bool
