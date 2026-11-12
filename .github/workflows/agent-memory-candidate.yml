@@ -74,6 +74,8 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_ollama_mock.py
       - name: Verify provider lock and disabled mode
         run: python3 agent-memory-mcp/tests/test_provider_lock.py
+      - name: Check shared memory between simulated clients
+        run: python3 agent-memory-mcp/tests/test_shared_clients.py
       - name: Check proposed private-network variant
         shell: bash
         run: |
