@@ -6,6 +6,7 @@ breaking_versions:
   - "0.1.2-dev.1"
 slug: agent_memory_mcp
 init: false
+timeout: 60
 arch:
   - amd64
 startup: application
