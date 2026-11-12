@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp)
     data, config = root / "data", root / "config"
     data.mkdir(); config.mkdir()
-    (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
+    (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "embedding_api_url": "http://127.0.0.1:18183/v1", "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
     try:
         docker("run", "-d", "--name", "amem-embedding-mock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
         for _ in range(60):
