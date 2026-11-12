@@ -75,7 +75,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --depth=1 origin main
+          # Version du dépôt utilisée comme référence 0.1.1, même après fusion.
+          git fetch --depth=1 origin 629edb6dbb2fe6964de463fa1115e1f1dbd9fc94
           mkdir -p "${RUNNER_TEMP}/amem-old-source"
           git show FETCH_HEAD:agent-memory-mcp/Dockerfile > "${RUNNER_TEMP}/amem-old-source/Dockerfile"
           git show FETCH_HEAD:agent-memory-mcp/run.sh > "${RUNNER_TEMP}/amem-old-source/run.sh"
