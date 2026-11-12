@@ -70,3 +70,5 @@ jobs:
           grep -q 'surveillance nécessite' "${RUNNER_TEMP}/amem-invalid.log"
       - name: Check automatic re-embedding at startup
         run: python3 agent-memory-mcp/tests/test_startup_reembed.py
+      - name: Verify local Ollama provider with a simulated server
+        run: python3 agent-memory-mcp/tests/test_ollama_mock.py
