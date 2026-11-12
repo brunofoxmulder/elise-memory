@@ -74,6 +74,19 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_ollama_mock.py
       - name: Verify provider lock and disabled mode
         run: python3 agent-memory-mcp/tests/test_provider_lock.py
+      - name: Check session tracking can be disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/session-data" "${RUNNER_TEMP}/session-config"
+          printf '%s' '{"session_tracking_enabled":false}' > "${RUNNER_TEMP}/session-data/options.json"
+          docker run -d --name amem-session -v "${RUNNER_TEMP}/session-data:/data" -v "${RUNNER_TEMP}/session-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-session >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-session sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SESSION_TRACKING_ENABLED=false'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-session sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SESSION_TRACKING_ENABLED=false'"
       - name: Check optional memory ranking
         shell: bash
         run: |
