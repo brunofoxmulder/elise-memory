@@ -50,7 +50,7 @@ def tool(action, args, ident):
 
 
 def start(data, config):
-    docker("run", "-d", "--name", "amem-reembed", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-e", "MCP_SESSION_TRACKING_ENABLED=false", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
+    docker("run", "-d", "--name", "amem-reembed", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
     for _ in range(60):
         try:
             call("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "startup-test", "version": "1"}}, 1)
@@ -65,7 +65,7 @@ threading.Thread(target=fake.serve_forever, daemon=True).start()
 with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp); data = root / "data"; config = root / "config"
     data.mkdir(); config.mkdir()
-    options = {"rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}
+    options = {"rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False, "session_tracking_enabled": False}
     (data / "options.json").write_text(json.dumps(options))
     try:
         start(data, config)
