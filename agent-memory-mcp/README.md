@@ -15,7 +15,7 @@ version déjà installée.
 
 Le service utilise actuellement une base SQLite persistante sous
 `/config/memory-data`. PostgreSQL n'est pas pris en charge par cette candidate.
-La recherche documentaire utilise le dossier `/config/memory-documents`.
+La recherche documentaire peut utiliser le dossier `/config/memory-documents` ou, au choix, `/share/memory-documents`.
 
 ## Choix de vectorisation
 
@@ -60,6 +60,7 @@ session ; il faut en tenir compte lors de la préparation de la sauvegarde.
 ## Recherche documentaire
 
 Le RAG, l'indexation automatique et la surveillance sont désactivés par défaut.
+L'option de source choisit le dossier de l'application ou `/share/memory-documents` ; ce dernier doit être créé avant le démarrage s'il est sélectionné. Le dossier `/share` entier est monté dans le conteneur en lecture seule, même si le dossier de l'application est choisi : cela limite les écritures, mais ne rend pas les autres fichiers du partage inaccessibles au processus. L'exposition des outils et l'accès aux documents restent à sécuriser avant mise en service.
 La surveillance nécessite le RAG et l'indexation automatique. L'index contient
 des données dérivées des documents ; avec un fournisseur distant, leur contenu
 peut être transmis pour vectorisation. Le dossier de documents et les droits
@@ -68,7 +69,9 @@ d'accès sont à définir avant toute utilisation avec des fichiers réels.
 Les documents indexés et les souvenirs sont deux usages distincts : indexer un
 fichier ne garantit pas que ses informations deviennent des souvenirs
 structurés. La production et la vérification de souvenirs issus de documents
-restent à organiser avec Hermès et Assist.
+restent à organiser avec Hermès et Assist. La prise en charge des formats, la
+taille des fichiers et la qualité de leur extraction restent à vérifier ;
+il ne faut pas présumer que tous les fichiers sont intégralement interprétés.
 
 ## Connexion et sécurité
 
