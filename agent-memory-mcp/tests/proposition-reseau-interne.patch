@@ -1,0 +1,15 @@
+--- a/agent-memory-mcp/config.yaml
++++ b/agent-memory-mcp/config.yaml
+@@ -8,11 +8,7 @@
+ startup: application
+ boot: auto
+-host_network: true
++host_network: false
+ backup: cold
+-ports:
+-  18080/tcp: 18080
+-ports_description:
+-  18080/tcp: MCP Streamable HTTP
+ map:
+   - type: addon_config
+     read_only: false
