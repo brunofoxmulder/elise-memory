@@ -52,6 +52,25 @@ jobs:
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_EMBEDDING_DIMENSION=1024'"
           docker logs amem-key 2>&1 | grep -q 'API compatible configurée : disponibilité non vérifiée'
           if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
+      - name: Check optional MCP bearer authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/token-data" "${RUNNER_TEMP}/token-config"
+          printf '%s' '{"mcp_auth_token":"FAKE_TEST_TOKEN_ONLY"}' > "${RUNNER_TEMP}/token-data/options.json"
+          docker run -d --name amem-token -p 127.0.0.1:18185:18080 -v "${RUNNER_TEMP}/token-data:/data" -v "${RUNNER_TEMP}/token-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-token >/dev/null 2>&1 || true' EXIT
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"auth-test","version":"1"}}}'
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18185/mcp || true)
+            if [ "$code" = 401 ]; then break; fi
+            sleep 1
+          done
+          test "$code" = 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer WRONG' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18185/mcp)
+          test "$code" = 401
+          curl -fsS -H 'Authorization: Bearer FAKE_TEST_TOKEN_ONLY' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18185/mcp | grep -q '"result"'
+          if docker logs amem-token 2>&1 | grep -q 'FAKE_TEST_TOKEN_ONLY'; then exit 1; fi
       - name: Verify upgrade from current app with fictional data
         shell: bash
         run: |
