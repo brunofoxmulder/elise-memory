@@ -43,6 +43,19 @@ ne doit pas basculer automatiquement vers un autre fournisseur ou modèle en
 cas d'échec. Une indisponibilité peut donc empêcher la vectorisation ou le
 rappel sémantique ; elle ne constitue pas une raison d'inventer une réponse.
 
+## Continuité en cas de panne
+
+Décision de Bruno : Memory doit continuer à répondre lorsque le fournisseur
+de vectorisation est indisponible. Le mode de diagnostic strict reste désactivé
+par défaut ; le serveur peut utiliser la recherche par texte à la place de la
+recherche sémantique. Les résultats peuvent être moins complets et un souvenir
+non retrouvé ne doit pas être présenté comme inexistant.
+
+Cette continuité ne s'applique pas à une panne complète du serveur Memory ou de
+sa base : dans ce cas, les clients doivent signaler qu'ils n'ont pas accès aux
+souvenirs, sans en inventer. Le diagnostic strict n'est à activer que pour
+rechercher une panne et peut faire échouer des appels de recherche.
+
 ## Attention aux souvenirs existants
 
 À l'activation des embeddings, le moteur amont peut **vectoriser
