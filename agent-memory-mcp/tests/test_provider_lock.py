@@ -71,11 +71,15 @@ with tempfile.TemporaryDirectory() as tmp:
         assert not calls, f"disabled provider unexpectedly called: {calls}"
         docker("stop", "amem-provider-lock"); docker("rm", "amem-provider-lock")
         options["embeddings_enabled"] = True
+        options["retrieval_strict"] = False
+        (data / "options.json").write_text(json.dumps(options))
+        start(data, config)
+        result = call("tools/call", {"name": "memory", "arguments": {"action": "recall", "query": "serre fictive"}}, 3)
+        assert "serre fictive" in json.dumps(result, ensure_ascii=False).lower(), result
+        docker("stop", "amem-provider-lock"); docker("rm", "amem-provider-lock")
         options["retrieval_strict"] = True
         (data / "options.json").write_text(json.dumps(options))
         start(data, config)
-        time.sleep(5)
-        call("tools/call", {"name": "memory", "arguments": {"action": "store", "title": "Second test", "content": "Un volet fictif reste ouvert.", "type": "semantic"}}, 3)
         try:
             call("tools/call", {"name": "memory", "arguments": {"action": "recall", "query": "serre fictive"}}, 4)
         except RuntimeError as exc:
@@ -84,7 +88,7 @@ with tempfile.TemporaryDirectory() as tmp:
             raise AssertionError("strict recall did not report the simulated outage")
         assert any(p == 18183 for p, _ in calls), f"API was not attempted: {calls}"
         assert not any(p == 11434 for p, _ in calls), f"unexpected Ollama fallback: {calls}"
-        print("Disabled mode made no calls; failing API did not fall back to local Ollama")
+        print("API outage: normal recall returned the fictitious memory; diagnostic strict mode reported the failure; no provider fallback")
     finally:
         docker("rm", "-f", "amem-provider-lock", check=False)
         for server in servers:
