@@ -1,5 +1,11 @@
 # PostgreSQL : état et travail restant
 
+## Décision du 12 novembre 2026
+
+Bruno accepte de poursuivre avec SQLite pour le moment. PostgreSQL reste une
+évolution à réexaminer si le volume, la concurrence ou les besoins réels le
+justifient. Aucune migration ni installation n'est demandée à ce stade.
+
 ## Décision déjà prise pour la vectorisation
 
 Le choix d'une API d'embeddings ou d'Ollama concerne la production des vecteurs.
