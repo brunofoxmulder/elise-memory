@@ -19,7 +19,7 @@ configuration:
     description: Facultatif ; utilise text-embedding-3-small par défaut. Le modèle doit accepter la dimension configurée.
   ollama_url:
     name: Adresse du serveur Ollama local
-    description: Facultatif ; serveur local seulement. La candidate utilise uniquement bge-m3 (1024 dimensions).
+    description: Facultatif ; adresse du serveur Ollama choisi.
   ollama_model:
     name: Modèle d’embeddings Ollama
     description: Facultatif ; BGE-M3 par défaut. Le modèle doit être installé sur le serveur Ollama.
