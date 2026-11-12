@@ -80,8 +80,11 @@ Le moteur lit le fichier retenu, retire notamment l'en-tête YAML Markdown s'il
 existe, puis découpe son texte en fragments. Le filtrage peut écarter des
 sections jugées peu utiles. Une recherche ne renvoie que des fragments
 sélectionnés : elle ne garantit donc pas l'interprétation complète du document.
-La conversion de documents réels et le contrôle de fidélité restent à
-concevoir ; aucun fichier réel n'a été lu pour cette vérification.
+Hermès est chargé de lire et digérer les documents, puis de préparer les
+souvenirs structurés avec leur source. Ses capacités effectives selon les
+formats et le contrôle de fidélité restent à vérifier. La conversion n'est
+pas une fonction à ajouter à Memory par défaut. Aucun fichier réel n'a été lu
+pour cette vérification.
 
 ## Connexion et sécurité
 
