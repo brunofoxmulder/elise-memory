@@ -44,3 +44,6 @@ configuration:
   session_tracking_enabled:
     name: Suivi automatique des sessions
     description: Active le suivi en arrière-plan et la consolidation automatique. Désactiver suspend ce suivi ; les actions manuelles restent à vérifier.
+  retrieval_strict:
+    name: Diagnostic strict des recherches
+    description: Pour les essais ; renvoie une erreur au lieu de certains replis. Peut empêcher des réponses et concerne aussi d’autres recherches. Désactivé en usage courant.
