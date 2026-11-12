@@ -15,7 +15,7 @@ version déjà installée.
 
 Le service utilise actuellement une base SQLite persistante sous
 `/config/memory-data`. PostgreSQL n'est pas pris en charge par cette candidate.
-La recherche documentaire peut utiliser le dossier `/config/memory-documents` ou, au choix, `/share/memory-documents`.
+La recherche documentaire utilise le dossier `/config/memory-documents`.
 
 ## Choix de vectorisation
 
@@ -82,7 +82,7 @@ réponses et les données existantes doit être évalué avant activation.
 ## Recherche documentaire
 
 Le RAG, l'indexation automatique et la surveillance sont désactivés par défaut.
-L'option de source choisit le dossier de l'application ou `/share/memory-documents` ; ce dernier doit être créé avant le démarrage s'il est sélectionné. Le dossier `/share` entier est monté dans le conteneur en lecture seule, même si le dossier de l'application est choisi : cela limite les écritures, mais ne rend pas les autres fichiers du partage inaccessibles au processus. L'exposition des outils et l'accès aux documents restent à sécuriser avant mise en service.
+Le partage `/share` n'est pas monté dans Memory : Bruno transmet les documents ou leurs adresses à Hermès pour qu'il les digère et gère les souvenirs.
 La surveillance nécessite le RAG et l'indexation automatique. L'index contient
 des données dérivées des documents ; avec un fournisseur distant, leur contenu
 peut être transmis pour vectorisation. Le dossier de documents et les droits
