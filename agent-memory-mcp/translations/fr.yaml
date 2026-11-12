@@ -41,3 +41,6 @@ configuration:
   sediment_enabled:
     name: Classement des souvenirs par niveau
     description: Modifie la priorité de certains souvenirs lors du rappel. Aucun cycle automatique n’est activé par cette option.
+  session_tracking_enabled:
+    name: Suivi automatique des sessions
+    description: Active le suivi en arrière-plan et la consolidation automatique. Désactiver suspend ce suivi ; les actions manuelles restent à vérifier.
