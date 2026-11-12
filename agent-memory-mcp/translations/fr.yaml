@@ -1,10 +1,22 @@
 configuration:
   openai_api_key:
-    name: Clé API OpenAI
-    description: Clé utilisée pour les embeddings. Ne la partage pas dans les journaux.
+    name: Clé API du fournisseur compatible OpenAI
+    description: Clé utilisée par le fournisseur API choisi ; inutile pour Ollama local.
   embeddings_enabled:
-    name: Activer les embeddings OpenAI
-    description: Attention : au démarrage, les souvenirs existants sans vecteur peuvent être envoyés à OpenAI. Activer seulement après sauvegarde et validation.
+    name: Activer les embeddings
+    description: Attention : au démarrage, les souvenirs existants sans vecteur peuvent être envoyés au fournisseur sélectionné. Activer seulement après sauvegarde et validation.
+  embedding_provider:
+    name: Fournisseur d’embeddings
+    description: API compatible OpenAI ou Ollama local. Changer peut déclencher une nouvelle vectorisation.
+  embedding_api_url:
+    name: Adresse de l’API d’embeddings
+    description: Facultatif ; utilise l’API OpenAI par défaut. Fournisseur compatible OpenAI uniquement.
+  embedding_api_model:
+    name: Modèle d’embeddings de l’API
+    description: Facultatif ; utilise text-embedding-3-small par défaut. Le modèle doit accepter 1024 dimensions.
+  ollama_url:
+    name: Adresse du serveur Ollama local
+    description: Facultatif ; serveur local seulement. La version actuelle essaie bge-m3 puis mxbai-embed-large.
   rag_enabled:
     name: Recherche documentaire RAG
     description: Autorise la recherche dans les documents configurés.
