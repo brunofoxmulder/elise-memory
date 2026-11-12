@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MCP = "http://127.0.0.1:18080/mcp"
 OLD = "VALEUR_FICTIVE_7162"
 NEW = "VALEUR_FICTIVE_9834"
+WATCHED = "VALEUR_FICTIVE_4628"
 requests = []
 
 
@@ -55,6 +56,17 @@ def tool(name, arguments, request_id):
     return call("tools/call", {"name": name, "arguments": arguments}, request_id)
 
 
+def start(data, config):
+    docker("run", "-d", "--name", "amem-rag-mock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-e", "MCP_RAG_WATCH_INTERVAL=2s", "-e", "MCP_RAG_DEBOUNCE=1s", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
+    for _ in range(60):
+        try:
+            call("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "rag-mock-test", "version": "1"}}, 1)
+            return
+        except (OSError, ValueError):
+            time.sleep(1)
+    raise RuntimeError("MCP server did not start")
+
+
 fake = ThreadingHTTPServer(("127.0.0.1", 18183), FakeAPI)
 threading.Thread(target=fake.serve_forever, daemon=True).start()
 with tempfile.TemporaryDirectory() as tmp:
@@ -67,15 +79,7 @@ with tempfile.TemporaryDirectory() as tmp:
     source.write_text(f"# Serre fictive\nL'arrosage de la serre utilise {OLD}.\n")
     (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "rag_enabled": True, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
     try:
-        docker("run", "-d", "--name", "amem-rag-mock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
-        for _ in range(60):
-            try:
-                call("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "rag-mock-test", "version": "1"}}, 1)
-                break
-            except (OSError, ValueError):
-                time.sleep(1)
-        else:
-            raise RuntimeError("MCP server did not start")
+        start(data, config)
         tool("index_documents", {}, 2)
         first = json.dumps(tool("search", {"action": "semantic", "query": "arrosage serre", "limit": 5}, 3))
         assert OLD in first, f"initial document not found: {first}"
@@ -83,8 +87,21 @@ with tempfile.TemporaryDirectory() as tmp:
         tool("index_documents", {}, 4)
         second = json.dumps(tool("search", {"action": "semantic", "query": "arrosage serre", "limit": 5}, 5))
         assert NEW in second and OLD not in second, f"document was not refreshed: {second}"
+        docker("stop", "amem-rag-mock")
+        docker("rm", "amem-rag-mock")
+        (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "rag_enabled": True, "rag_auto_index": False, "rag_file_watcher": True, "stats_enabled": False}))
+        start(data, config)
+        time.sleep(3)  # Allow the watcher to establish its initial baseline.
+        source.write_text(f"# Serre fictive\nL'arrosage de la serre utilise {WATCHED}.\n")
+        for i in range(20):
+            time.sleep(2)
+            current = json.dumps(tool("search", {"action": "semantic", "query": "arrosage serre", "limit": 5}, 10 + i))
+            if WATCHED in current and NEW not in current:
+                break
+        else:
+            raise AssertionError(f"automatic watcher did not refresh document: {current}")
         assert requests and all(p == "/v1/embeddings" and m == "text-embedding-3-small" and d == 1024 for p, m, d in requests), requests
-        print("Candidate indexed and refreshed the synthetic document with a local fake API")
+        print("Candidate indexed and refreshed the synthetic document manually and automatically using a local fake API")
     finally:
         docker("rm", "-f", "amem-rag-mock", check=False)
         fake.shutdown()
