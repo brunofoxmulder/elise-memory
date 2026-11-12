@@ -57,6 +57,15 @@ configurée à froid ; son fonctionnement réel et sa restauration restent à
 vérifier. À l'arrêt, le moteur peut écrire des éléments de consolidation de
 session ; il faut en tenir compte lors de la préparation de la sauvegarde.
 
+## Classement des souvenirs
+
+Le classement par niveaux est désactivé par défaut. Activé, il modifie la
+priorité de certains souvenirs et peut exclure du rappel les souvenirs de
+niveau surface lorsque leur contexte ne correspond pas ; certains souvenirs
+de niveau character sont systématiquement proposés. Il ne déclenche pas de
+cycle automatique de reclassement dans cette candidate. L'impact sur les
+réponses et les données existantes doit être évalué avant activation.
+
 ## Recherche documentaire
 
 Le RAG, l'indexation automatique et la surveillance sont désactivés par défaut.
