@@ -69,6 +69,13 @@ with tempfile.TemporaryDirectory() as tmp:
         tool("hermes-simule", "delete", {"id": memory_id}, 7)
         listed = json.dumps(tool("assist-simule", "list", {"type": "all", "limit": 100}, 8))
         assert memory_id not in listed and "lilas-fictif-109" not in listed
+        # Une information utile placée après 300 caractères doit parvenir
+        # aux clients : la limite amont de 300 coupait les souvenirs longs.
+        long_content = "Serre fictive. " + ("Contexte neutre. " * 80) + "CONDITION_FICTIVE_FIN"
+        tool("hermes-simule", "store", {"title": "Serre fictive", "content": long_content, "type": "semantic", "context": "test-long"}, 9)
+        recalled = json.dumps(tool("assist-simule", "recall", {"query": "Serre fictive", "limit": 5}, 10), ensure_ascii=False)
+        assert "CONDITION_FICTIVE_FIN" in recalled, "long memory content was truncated before useful detail"
+        print("Long fictional memory returned beyond the former 300-character limit")
         print("Fictional memory shared, updated and deleted between independent simulated clients")
     finally:
         docker("rm", "-f", NAME, check=False)
