@@ -32,6 +32,7 @@ jobs:
             if curl -fsS -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18181/mcp > "${RUNNER_TEMP}/initialize"; then break; fi
             sleep 1
           done
+          docker logs agent-memory-candidate 2>&1 | grep -q 'Vectorisation : désactivée'
           test -s "${RUNNER_TEMP}/initialize"
           grep -q '"result"' "${RUNNER_TEMP}/initialize"
           docker inspect -f '{{.State.Running}}' agent-memory-candidate | grep -qx true
@@ -49,6 +50,7 @@ jobs:
           done
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'OPENAI_EMBEDDING_MODEL=text-embedding-3-small'"
           docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_EMBEDDING_DIMENSION=1024'"
+          docker logs amem-key 2>&1 | grep -q 'API compatible configurée : disponibilité non vérifiée'
           if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
       - name: Verify upgrade from current app with fictional data
         shell: bash
