@@ -6,8 +6,19 @@ test -r "$OPTIONS" || { echo 'Options indisponibles' >&2; exit 1; }
 mkdir -p /config/memory-data/logs /config/memory-documents
 
 export MCP_HTTP_MODE=http MCP_HTTP_HOST=0.0.0.0 MCP_HTTP_PORT=18080
-# Compatibilité provisoire avec le client HA existant : accès non authentifié.
-export MCP_HTTP_INSECURE_ALLOW_UNAUTHENTICATED=true
+# Un jeton protège le serveur, mais n'est activé que si l'utilisateur en fournit
+# un. Le client Assist doit pouvoir le transmettre pour conserver l'accès.
+unset MCP_HTTP_AUTH_TOKEN
+MCP_TOKEN="$(jq -r '.mcp_auth_token // empty' "$OPTIONS")"
+if [ -n "$MCP_TOKEN" ]; then
+  export MCP_HTTP_AUTH_TOKEN="$MCP_TOKEN"
+  export MCP_HTTP_INSECURE_ALLOW_UNAUTHENTICATED=false
+  echo 'Accès MCP avec jeton activé.'
+else
+  export MCP_HTTP_INSECURE_ALLOW_UNAUTHENTICATED=true
+  echo 'Accès MCP sans authentification : limiter le réseau.'
+fi
+unset MCP_TOKEN
 export MCP_MEMORY_ENABLED=true MCP_TOOL_GROUPING=true
 export MCP_DATA_PATH=/config/memory-data
 export MCP_LOG_PATH=/config/memory-data/logs/mcp-diagnostics.log
