@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as tmp:
             raise RuntimeError("server did not start")
         call("assist-simule", "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "assist-simule", "version": "1"}}, 2)
         created = tool("hermes-simule", "store", {"title": "Test partage fictif", "content": "lilas-fictif-108", "type": "semantic", "context": "test-partage"}, 3)
-        match = re.search(r"(?m)^- ID:\\s*(\\S+)", created["content"][0]["text"])
+        match = re.search(r"(?m)^- ID:\s*(\S+)", created["content"][0]["text"])
         if not match:
             raise RuntimeError("store response missing ID")
         memory_id = match.group(1)
