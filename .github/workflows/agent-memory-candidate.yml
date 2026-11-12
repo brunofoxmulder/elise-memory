@@ -74,6 +74,20 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_ollama_mock.py
       - name: Verify provider lock and disabled mode
         run: python3 agent-memory-mcp/tests/test_provider_lock.py
+      - name: Check optional memory ranking
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/sediment-data" "${RUNNER_TEMP}/sediment-config"
+          printf '%s' '{"sediment_enabled":true}' > "${RUNNER_TEMP}/sediment-data/options.json"
+          docker run -d --name amem-sediment -v "${RUNNER_TEMP}/sediment-data:/data" -v "${RUNNER_TEMP}/sediment-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-sediment >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-sediment sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SEDIMENT_ENABLED=true'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-sediment sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SEDIMENT_ENABLED=true'"
+          docker exec amem-sediment sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SEDIMENT_SCHEDULE_INTERVAL=0'"
       - name: Check shared-document directory selection
         shell: bash
         run: |
