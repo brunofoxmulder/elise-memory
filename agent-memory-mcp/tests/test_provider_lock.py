@@ -46,7 +46,7 @@ def call(method, params, ident):
 
 
 def start(data, config):
-    docker("run", "-d", "--name", "amem-provider-lock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "MCP_SESSION_TRACKING_ENABLED=false", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
+    docker("run", "-d", "--name", "amem-provider-lock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
     for _ in range(60):
         try:
             call("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "lock-test", "version": "1"}}, 1)
@@ -62,7 +62,7 @@ for server in servers:
 with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp); data = root / "data"; config = root / "config"
     data.mkdir(); config.mkdir()
-    options = {"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embedding_api_url": "http://127.0.0.1:18183/v1", "embeddings_enabled": False, "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}
+    options = {"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embedding_api_url": "http://127.0.0.1:18183/v1", "embeddings_enabled": False, "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False, "session_tracking_enabled": False}
     (data / "options.json").write_text(json.dumps(options))
     try:
         start(data, config)
