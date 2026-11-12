@@ -1,0 +1,49 @@
+configuration:
+  openai_api_key:
+    name: Clé API du fournisseur compatible OpenAI
+    description: Clé utilisée par le fournisseur API choisi ; inutile pour Ollama local.
+  mcp_auth_token:
+    name: Jeton d’accès MCP facultatif
+    description: Attention : activer peut couper Assist s’il ne sait pas envoyer le jeton. Le HTTP ne chiffre pas les données. À utiliser après vérification des clients.
+  embeddings_enabled:
+    name: Activer les embeddings
+    description: Attention : au démarrage, les souvenirs existants sans vecteur peuvent être envoyés au fournisseur sélectionné. Activer seulement après sauvegarde et validation.
+  embedding_provider:
+    name: Fournisseur d’embeddings
+    description: API compatible OpenAI ou Ollama local. Changer peut déclencher une nouvelle vectorisation.
+  embedding_dimensions:
+    name: Dimensions des vecteurs
+    description: 1024 par défaut ; modifier peut déclencher une nouvelle vectorisation. Adapter à la sortie réelle du modèle choisi.
+  embedding_api_url:
+    name: Adresse de l’API d’embeddings
+    description: Facultatif ; utilise l’API OpenAI par défaut. Fournisseur compatible OpenAI uniquement.
+  embedding_api_model:
+    name: Modèle d’embeddings de l’API
+    description: Facultatif ; utilise text-embedding-3-small par défaut. Le modèle doit accepter la dimension configurée.
+  ollama_url:
+    name: Adresse du serveur Ollama local
+    description: Facultatif ; adresse du serveur Ollama choisi.
+  ollama_model:
+    name: Modèle d’embeddings Ollama
+    description: Facultatif ; BGE-M3 par défaut. Le modèle doit être installé sur le serveur Ollama.
+  rag_enabled:
+    name: Recherche documentaire RAG
+    description: Autorise la recherche dans les documents configurés.
+  rag_auto_index:
+    name: Indexation automatique
+    description: Vérifie les documents au démarrage et est nécessaire à la surveillance.
+  rag_file_watcher:
+    name: Surveillance des documents
+    description: Nécessite le RAG et l’indexation automatique.
+  stats_enabled:
+    name: Statistiques d’utilisation
+    description: Enregistre localement des statistiques sur les appels.
+  sediment_enabled:
+    name: Classement des souvenirs par niveau
+    description: Modifie la priorité et peut exclure certains souvenirs hors de leur contexte. Aucun cycle automatique n’est activé par cette option.
+  session_tracking_enabled:
+    name: Suivi automatique des sessions
+    description: Active le suivi en arrière-plan et la consolidation automatique. Désactiver suspend ce suivi ; les actions manuelles restent à vérifier.
+  retrieval_strict:
+    name: Diagnostic strict des recherches
+    description: Pour les essais ; renvoie une erreur au lieu de certains replis. Peut empêcher des réponses et concerne aussi d’autres recherches. Désactivé en usage courant.

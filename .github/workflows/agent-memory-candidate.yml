@@ -1,0 +1,157 @@
+name: Agent Memory candidate validation
+
+on:
+  pull_request:
+    paths:
+      - "agent-memory-mcp/**"
+      - ".github/workflows/agent-memory-candidate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build candidate image
+        run: docker build -t agent-memory-candidate ./agent-memory-mcp
+      - name: Start without API key and inspect MCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/amem-data" "${RUNNER_TEMP}/amem-config"
+          printf '%s' '{"rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-data/options.json"
+          docker run -d --name agent-memory-candidate -p 127.0.0.1:18181:18080 \
+            -v "${RUNNER_TEMP}/amem-data:/data" -v "${RUNNER_TEMP}/amem-config:/config" agent-memory-candidate
+          trap 'docker logs agent-memory-candidate; docker rm -f agent-memory-candidate' EXIT
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"candidate-test","version":"1"}}}'
+          for i in $(seq 1 60); do
+            if curl -fsS -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18181/mcp > "${RUNNER_TEMP}/initialize"; then break; fi
+            sleep 1
+          done
+          docker logs agent-memory-candidate 2>&1 | grep -q 'Vectorisation : désactivée'
+          test -s "${RUNNER_TEMP}/initialize"
+          grep -q '"result"' "${RUNNER_TEMP}/initialize"
+          docker inspect -f '{{.State.Running}}' agent-memory-candidate | grep -qx true
+      - name: Check simulated key and configuration without a real API call
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/amem-key-data" "${RUNNER_TEMP}/amem-key-config"
+          printf '%s' '{"openai_api_key":"TEST_KEY_NOT_A_SECRET","embeddings_enabled":true,"rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-key-data/options.json"
+          docker run -d --name amem-key -v "${RUNNER_TEMP}/amem-key-data:/data" -v "${RUNNER_TEMP}/amem-key-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-key' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'OPENAI_EMBEDDING_MODEL=text-embedding-3-small'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'OPENAI_EMBEDDING_MODEL=text-embedding-3-small'"
+          docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_EMBEDDING_DIMENSION=1024'"
+          docker logs amem-key 2>&1 | grep -q 'API compatible configurée : disponibilité non vérifiée'
+          if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
+      - name: Check optional MCP bearer authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/token-data" "${RUNNER_TEMP}/token-config"
+          printf '%s' '{"mcp_auth_token":"FAKE_TEST_TOKEN_ONLY"}' > "${RUNNER_TEMP}/token-data/options.json"
+          docker run -d --name amem-token -p 127.0.0.1:18185:18080 -v "${RUNNER_TEMP}/token-data:/data" -v "${RUNNER_TEMP}/token-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-token >/dev/null 2>&1 || true' EXIT
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"auth-test","version":"1"}}}'
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18185/mcp || true)
+            if [ "$code" = 401 ]; then break; fi
+            sleep 1
+          done
+          test "$code" = 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer WRONG' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18185/mcp)
+          test "$code" = 401
+          curl -fsS -H 'Authorization: Bearer FAKE_TEST_TOKEN_ONLY' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18185/mcp | grep -q '"result"'
+          if docker logs amem-token 2>&1 | grep -q 'FAKE_TEST_TOKEN_ONLY'; then exit 1; fi
+      - name: Verify upgrade from current app with fictional data
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Version du dépôt utilisée comme référence 0.1.1, même après fusion.
+          git fetch --depth=1 origin 629edb6dbb2fe6964de463fa1115e1f1dbd9fc94
+          mkdir -p "${RUNNER_TEMP}/amem-old-source"
+          git show FETCH_HEAD:agent-memory-mcp/Dockerfile > "${RUNNER_TEMP}/amem-old-source/Dockerfile"
+          git show FETCH_HEAD:agent-memory-mcp/run.sh > "${RUNNER_TEMP}/amem-old-source/run.sh"
+          docker build -t agent-memory-previous "${RUNNER_TEMP}/amem-old-source"
+          python3 agent-memory-mcp/tests/test_upgrade_candidate.py
+      - name: Verify synthetic data survives a stopped-copy restore
+        run: python3 agent-memory-mcp/tests/test_restore_candidate.py
+      - name: Verify embeddings with a local simulated API
+        run: python3 agent-memory-mcp/tests/test_embedding_mock.py
+      - name: Verify document indexing and refresh with a simulated API
+        run: python3 agent-memory-mcp/tests/test_rag_mock.py
+      - name: Reject a watcher without automatic indexing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/amem-invalid-data" "${RUNNER_TEMP}/amem-invalid-config"
+          printf '%s' '{"rag_enabled":true,"rag_auto_index":false,"rag_file_watcher":true,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-invalid-data/options.json"
+          set +e
+          docker run --rm -v "${RUNNER_TEMP}/amem-invalid-data:/data" -v "${RUNNER_TEMP}/amem-invalid-config:/config" agent-memory-candidate > "${RUNNER_TEMP}/amem-invalid.log" 2>&1
+          code=$?
+          set -e
+          test "$code" -ne 0
+          grep -q 'surveillance nécessite' "${RUNNER_TEMP}/amem-invalid.log"
+      - name: Check automatic re-embedding at startup
+        run: python3 agent-memory-mcp/tests/test_startup_reembed.py
+      - name: Verify local Ollama provider with a simulated server
+        run: python3 agent-memory-mcp/tests/test_ollama_mock.py
+      - name: Verify provider lock and disabled mode
+        run: python3 agent-memory-mcp/tests/test_provider_lock.py
+      - name: Check session tracking can be disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/session-data" "${RUNNER_TEMP}/session-config"
+          printf '%s' '{"session_tracking_enabled":false}' > "${RUNNER_TEMP}/session-data/options.json"
+          docker run -d --name amem-session -v "${RUNNER_TEMP}/session-data:/data" -v "${RUNNER_TEMP}/session-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-session >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-session sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SESSION_TRACKING_ENABLED=false'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-session sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SESSION_TRACKING_ENABLED=false'"
+      - name: Check optional memory ranking
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/sediment-data" "${RUNNER_TEMP}/sediment-config"
+          printf '%s' '{"sediment_enabled":true}' > "${RUNNER_TEMP}/sediment-data/options.json"
+          docker run -d --name amem-sediment -v "${RUNNER_TEMP}/sediment-data:/data" -v "${RUNNER_TEMP}/sediment-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-sediment >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-sediment sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SEDIMENT_ENABLED=true'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-sediment sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SEDIMENT_ENABLED=true'"
+          docker exec amem-sediment sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_SEDIMENT_SCHEDULE_INTERVAL=0'"
+      - name: Check shared memory between simulated clients
+        run: python3 agent-memory-mcp/tests/test_shared_clients.py
+      - name: Check proposed private-network variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check agent-memory-mcp/tests/proposition-reseau-interne.patch
+          mkdir -p "${RUNNER_TEMP}/amem-private-data" "${RUNNER_TEMP}/amem-private-config"
+          printf '%s' '{"rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-private-data/options.json"
+          docker network create amem-private
+          trap 'docker rm -f amem-private-server >/dev/null 2>&1 || true; docker network rm amem-private >/dev/null 2>&1 || true' EXIT
+          docker run -d --name amem-private-server --network amem-private --network-alias memory \
+            -v "${RUNNER_TEMP}/amem-private-data:/data" -v "${RUNNER_TEMP}/amem-private-config:/config" agent-memory-candidate
+          test -z "$(docker port amem-private-server)"
+          docker pull curlimages/curl:8.11.1
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"private-network-test","version":"1"}}}'
+          for client in hermes-simule assist-simule; do
+            docker run --rm --network amem-private --name "$client" curlimages/curl:8.11.1 \
+              --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
+              -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+              --data "$request" http://memory:18080/mcp | grep -q '"result"'
+          done

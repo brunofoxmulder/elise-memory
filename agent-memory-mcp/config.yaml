@@ -1,13 +1,18 @@
 name: Agent Memory MCP
-description: Test minimal Agent Memory MCP pour Home Assistant
-version: "0.1.1"
+description: Mémoire partagée — candidate non installable en production sans recette
+version: "0.1.2-dev.1"
+stage: experimental
+breaking_versions:
+  - "0.1.2-dev.1"
 slug: agent_memory_mcp
 init: false
+timeout: 60
 arch:
   - amd64
 startup: application
 boot: auto
 host_network: true
+backup: cold
 ports:
   18080/tcp: 18080
 ports_description:
@@ -15,5 +20,31 @@ ports_description:
 map:
   - type: addon_config
     read_only: false
-options: {}
-schema: {}
+options:
+  embeddings_enabled: false
+  embedding_provider: openai_compatible
+  embedding_dimensions: 1024
+  rag_enabled: false
+  rag_auto_index: false
+  rag_file_watcher: false
+  stats_enabled: false
+  sediment_enabled: false
+  retrieval_strict: false
+  session_tracking_enabled: true
+schema:
+  openai_api_key: "password?"
+  mcp_auth_token: "password?"
+  embeddings_enabled: bool
+  embedding_provider: "list(openai_compatible|ollama)"
+  embedding_dimensions: "int(1,4096)"
+  embedding_api_url: "url?"
+  embedding_api_model: "str?"
+  ollama_url: "url?"
+  ollama_model: "str?"
+  rag_enabled: bool
+  rag_auto_index: bool
+  rag_file_watcher: bool
+  stats_enabled: bool
+  sediment_enabled: bool
+  retrieval_strict: bool
+  session_tracking_enabled: bool
