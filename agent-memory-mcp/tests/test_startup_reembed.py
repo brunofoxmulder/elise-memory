@@ -79,6 +79,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert "Without an embedding" in stats_before, stats_before
         docker("stop", "amem-reembed"); docker("rm", "amem-reembed")
         options["openai_api_key"] = "TEST_KEY_NOT_A_SECRET"
+        options["embedding_api_url"] = "http://127.0.0.1:18183/v1"
         options["embeddings_enabled"] = False
         (data / "options.json").write_text(json.dumps(options))
         start(data, config)
