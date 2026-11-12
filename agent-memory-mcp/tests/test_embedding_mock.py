@@ -17,7 +17,7 @@ class FakeEmbeddingAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         events.append((self.path, payload.get("model"), payload.get("dimensions")))
-        vector = [0.0] * 1024
+        vector = [0.0] * payload.get("dimensions", 1024)
         vector[0] = 1.0
         result = json.dumps({"object": "list", "data": [{"object": "embedding", "index": 0, "embedding": vector}], "model": "text-embedding-3-small", "usage": {"prompt_tokens": 3, "total_tokens": 3}}).encode()
         self.send_response(200)
@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp)
     data, config = root / "data", root / "config"
     data.mkdir(); config.mkdir()
-    (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "embedding_api_url": "http://127.0.0.1:18183/v1", "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
+    (data / "options.json").write_text(json.dumps({"openai_api_key": "TEST_KEY_NOT_A_SECRET", "embeddings_enabled": True, "embedding_api_url": "http://127.0.0.1:18183/v1", "embedding_api_model": "modele-fictif-768", "embedding_dimensions": 768, "rag_enabled": False, "rag_auto_index": False, "rag_file_watcher": False, "stats_enabled": False}))
     try:
         docker("run", "-d", "--name", "amem-embedding-mock", "--network", "host", "--user", f"{os.getuid()}:{os.getgid()}", "-e", "OPENAI_BASE_URL=http://127.0.0.1:18183/v1", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
         for _ in range(60):
@@ -67,10 +67,10 @@ with tempfile.TemporaryDirectory() as tmp:
             raise RuntimeError("MCP server did not start")
         call("tools/call", {"name": "memory", "arguments": {"action": "store", "title": "Fait fictif", "content": "La serre imaginaire ouvre a sept heures.", "type": "semantic"}}, 2)
         assert events, "candidate did not call the simulated embeddings API"
-        assert all(path == "/v1/embeddings" and model == "text-embedding-3-small" and dims == 1024 for path, model, dims in events), events
+        assert all(path == "/v1/embeddings" and model == "modele-fictif-768" and dims == 768 for path, model, dims in events), events
         stats = call("tools/call", {"name": "memory", "arguments": {"action": "stats"}}, 3)
         assert "openai:" in json.dumps(stats).lower(), "no OpenAI embedding reported in memory stats"
-        print("Candidate stored a synthetic memory using the simulated 1024-dimensional API")
+        print("Candidate stored a synthetic memory using a simulated custom 768-dimensional API")
     finally:
         docker("rm", "-f", "amem-embedding-mock", check=False)
         fake.shutdown()
