@@ -18,6 +18,7 @@ map:
     read_only: false
 options:
   embeddings_enabled: false
+  embedding_provider: openai_compatible
   rag_enabled: false
   rag_auto_index: false
   rag_file_watcher: false
@@ -25,6 +26,10 @@ options:
 schema:
   openai_api_key: "password?"
   embeddings_enabled: bool
+  embedding_provider: "list(openai_compatible|ollama)"
+  embedding_api_url: "url?"
+  embedding_api_model: "str?"
+  ollama_url: "url?"
   rag_enabled: bool
   rag_auto_index: bool
   rag_file_watcher: bool
