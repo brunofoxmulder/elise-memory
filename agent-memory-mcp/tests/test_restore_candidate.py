@@ -1,6 +1,8 @@
 """Container-only recovery check with synthetic data; never touches HA."""
 import json
+import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,7 +33,7 @@ def call(method, params, number):
 
 
 def start(name, data, config):
-    docker("run", "-d", "--name", name, "-p", f"127.0.0.1:{PORT}:18080", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
+    docker("run", "-d", "--name", name, "--user", f"{os.getuid()}:{os.getgid()}", "-p", f"127.0.0.1:{PORT}:18080", "-v", f"{data}:/data", "-v", f"{config}:/config", "agent-memory-candidate")
     for _ in range(60):
         try:
             call("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "restore-test", "version": "1"}}, 1)
@@ -56,7 +58,10 @@ with tempfile.TemporaryDirectory() as tmp:
         start("amem-restore-source", data, config)
         created = tool("store", {"title": "Test sauvegarde fictif", "content": MARKER, "type": "semantic", "context": "test-isole"}, 2)
         text = created["content"][0]["text"]
-        saved_id = json.loads(text)["id"]
+        match = re.search(r"(?m)^- ID:\s*(\S+)", text)
+        if not match:
+            raise RuntimeError(f"Store response missing ID: {text}")
+        saved_id = match.group(1)
         docker("stop", "amem-restore-source")
         docker("rm", "amem-restore-source")
         shutil.copytree(config, restored)
