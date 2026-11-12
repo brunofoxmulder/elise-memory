@@ -97,3 +97,34 @@ Authentification et confidentialité réseau,
 raccordement effectif d'Hermès et d'Assist, règles de qualité des souvenirs,
 indexation documentaire réelle, sauvegarde et restauration HAOS. PostgreSQL
 n'est pas implémenté dans la candidate actuelle.
+
+
+## Étude de sécurisation — 12 novembre 2026
+
+Le code amont de Memory à la révision utilisée sait vérifier un jeton HTTP
+`MCP_HTTP_AUTH_TOKEN`. Le code d'Hermès v0.23.0 documente les en-têtes
+`Authorization` pour un serveur MCP distant. En revanche, la configuration
+du client MCP de Home Assistant examinée dans ce chantier ne proposait pas de
+champ pour saisir directement ce jeton. Ce point dépend de la version et du
+client : il doit être revérifié avant toute mise en service.
+
+| Solution | Intérêt | Limite à lever |
+| --- | --- | --- |
+| Jeton unique sur Memory | Protège le serveur contre les appels sans jeton ; Hermès peut être configuré avec un en-tête | Assist pourrait perdre l'accès ; un jeton sur HTTP ne chiffre ni jeton ni contenu |
+| Réseau interne sans port publié | Réduit l'exposition au réseau local si l'isolement fonctionne | Ne garantit ni authentification ni séparation entre applications internes ; adresses et accès HA/Hermès à tester |
+| Passerelle d'authentification compatible avec les deux clients | Permet de conserver un point commun contrôlé | Compatibilité du client HA, complexité et maintenance non démontrées |
+
+La piste du réseau interne mérite d'être examinée avant d'ajouter un autre
+service : le manifeste actuel utilise `host_network: true` et le port 18080.
+Un changement de réseau peut rompre les URL utilisées par Assist, Hermès ou
+un autre client ; il ne doit pas être appliqué sans inventaire, recette et
+retour arrière. Le serveur resterait accessible aux clients du réseau interne
+autorisés par la configuration réseau, sans identité individuelle garantie.
+
+Ne pas activer un jeton global, retirer le port ou modifier une connexion en
+production avant d'avoir confirmé le chemin des deux clients et obtenu la
+validation explicite de Bruno.
+
+Sources : [contrôle HTTP de Memory épinglé](https://github.com/ipiton/agent-memory-mcp/blob/dc404e4f3be140ea5c4e7a4fa282c02427e7cb9b/internal/server/http_security.go),
+[configuration MCP Hermès v0.23.0](https://github.com/NousResearch/hermes-agent/blob/v0.23.0/website/docs/user-guide/features/mcp.md),
+[documentation Home Assistant sur les applications](https://developers.home-assistant.io/docs/apps/).
