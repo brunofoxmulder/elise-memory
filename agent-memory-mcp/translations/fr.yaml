@@ -2,6 +2,9 @@ configuration:
   openai_api_key:
     name: Clé API OpenAI
     description: Clé utilisée pour les embeddings. Ne la partage pas dans les journaux.
+  embeddings_enabled:
+    name: Activer les embeddings OpenAI
+    description: Attention : au démarrage, les souvenirs existants sans vecteur peuvent être envoyés à OpenAI. Activer seulement après sauvegarde et validation.
   rag_enabled:
     name: Recherche documentaire RAG
     description: Autorise la recherche dans les documents configurés.
