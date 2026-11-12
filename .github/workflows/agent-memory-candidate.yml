@@ -52,3 +52,5 @@ jobs:
           if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
       - name: Verify synthetic data survives a stopped-copy restore
         run: python3 agent-memory-mcp/tests/test_restore_candidate.py
+      - name: Verify embeddings with a local simulated API
+        run: python3 agent-memory-mcp/tests/test_embedding_mock.py
