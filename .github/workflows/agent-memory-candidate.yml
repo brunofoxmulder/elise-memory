@@ -72,3 +72,5 @@ jobs:
         run: python3 agent-memory-mcp/tests/test_startup_reembed.py
       - name: Verify local Ollama provider with a simulated server
         run: python3 agent-memory-mcp/tests/test_ollama_mock.py
+      - name: Verify provider lock and disabled mode
+        run: python3 agent-memory-mcp/tests/test_provider_lock.py
