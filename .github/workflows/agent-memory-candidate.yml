@@ -35,3 +35,17 @@ jobs:
           test -s "${RUNNER_TEMP}/initialize"
           grep -q '"result"' "${RUNNER_TEMP}/initialize"
           docker inspect -f '{{.State.Running}}' agent-memory-candidate | grep -qx true
+      - name: Check simulated key and configuration without a real API call
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/amem-key-data" "${RUNNER_TEMP}/amem-key-config"
+          printf '%s' '{"openai_api_key":"TEST_KEY_NOT_A_SECRET","rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-key-data/options.json"
+          docker run -d --name amem-key -v "${RUNNER_TEMP}/amem-key-data:/data" -v "${RUNNER_TEMP}/amem-key-config:/config" agent-memory-candidate
+          trap 'docker rm -f amem-key' EXIT
+          for i in $(seq 1 30); do
+            if docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'OPENAI_EMBEDDING_MODEL=text-embedding-3-small'"; then break; fi
+            sleep 1
+          done
+          docker exec amem-key sh -c "tr '\\000' '\\n' < /proc/1/environ | grep -qx 'MCP_EMBEDDING_DIMENSION=1024'"
+          if docker logs amem-key 2>&1 | grep -q 'TEST_KEY_NOT_A_SECRET'; then echo 'Key appeared in logs' >&2; exit 1; fi
