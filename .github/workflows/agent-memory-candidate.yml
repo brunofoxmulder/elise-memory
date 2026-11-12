@@ -1,0 +1,37 @@
+name: Agent Memory candidate validation
+
+on:
+  pull_request:
+    paths:
+      - "agent-memory-mcp/**"
+      - ".github/workflows/agent-memory-candidate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build candidate image
+        run: docker build -t agent-memory-candidate ./agent-memory-mcp
+      - name: Start without API key and inspect MCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/amem-data" "${RUNNER_TEMP}/amem-config"
+          printf '%s' '{"rag_enabled":false,"rag_auto_index":false,"rag_file_watcher":false,"stats_enabled":false}' > "${RUNNER_TEMP}/amem-data/options.json"
+          docker run -d --name agent-memory-candidate -p 127.0.0.1:18181:18080 \
+            -v "${RUNNER_TEMP}/amem-data:/data" -v "${RUNNER_TEMP}/amem-config:/config" agent-memory-candidate
+          trap 'docker logs agent-memory-candidate; docker rm -f agent-memory-candidate' EXIT
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"candidate-test","version":"1"}}}'
+          for i in $(seq 1 60); do
+            if curl -fsS -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data "$request" http://127.0.0.1:18181/mcp > "${RUNNER_TEMP}/initialize"; then break; fi
+            sleep 1
+          done
+          test -s "${RUNNER_TEMP}/initialize"
+          grep -q '"result"' "${RUNNER_TEMP}/initialize"
+          docker inspect -f '{{.State.Running}}' agent-memory-candidate | grep -qx true
