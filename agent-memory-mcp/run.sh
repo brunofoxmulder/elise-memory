@@ -3,13 +3,14 @@ set -eu
 
 OPTIONS=/data/options.json
 test -r "$OPTIONS" || { echo 'Options indisponibles' >&2; exit 1; }
-mkdir -p /config/memory-data /config/memory-documents
+mkdir -p /config/memory-data/logs /config/memory-documents
 
 export MCP_HTTP_MODE=http MCP_HTTP_HOST=0.0.0.0 MCP_HTTP_PORT=18080
 # Compatibilité provisoire avec le client HA existant : accès non authentifié.
 export MCP_HTTP_INSECURE_ALLOW_UNAUTHENTICATED=true
 export MCP_MEMORY_ENABLED=true MCP_TOOL_GROUPING=true
 export MCP_DATA_PATH=/config/memory-data
+export MCP_LOG_PATH=/config/memory-data/logs/mcp-diagnostics.log
 export MCP_ROOT=/config/memory-documents MCP_INDEX_DIRS=.
 export MCP_RAG_ENABLED="$(jq -r '.rag_enabled // false' "$OPTIONS")"
 export MCP_RAG_AUTO_INDEX="$(jq -r '.rag_auto_index // false' "$OPTIONS")"
