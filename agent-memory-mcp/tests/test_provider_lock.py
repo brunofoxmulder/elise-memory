@@ -72,6 +72,15 @@ with tempfile.TemporaryDirectory() as tmp:
         docker("stop", "amem-provider-lock"); docker("rm", "amem-provider-lock")
         options["embeddings_enabled"] = True
         options["retrieval_strict"] = False
+        options["openai_api_key"] = ""
+        (data / "options.json").write_text(json.dumps(options))
+        start(data, config)
+        result = call("tools/call", {"name": "memory", "arguments": {"action": "recall", "query": "serre fictive"}}, 3)
+        assert "serre fictive" in json.dumps(result, ensure_ascii=False).lower(), result
+        assert not calls, f"missing key unexpectedly called a provider: {calls}"
+        assert "Clé API absente" in docker("logs", "amem-provider-lock").stderr
+        docker("stop", "amem-provider-lock"); docker("rm", "amem-provider-lock")
+        options["openai_api_key"] = "TEST_KEY_NOT_A_SECRET"
         (data / "options.json").write_text(json.dumps(options))
         start(data, config)
         result = call("tools/call", {"name": "memory", "arguments": {"action": "recall", "query": "serre fictive"}}, 3)
