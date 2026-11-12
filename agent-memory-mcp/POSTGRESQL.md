@@ -2,9 +2,13 @@
 
 ## Décision du 12 novembre 2026
 
-Bruno accepte de poursuivre avec SQLite pour le moment. PostgreSQL reste une
-évolution à réexaminer si le volume, la concurrence ou les besoins réels le
-justifient. Aucune migration ni installation n'est demandée à ce stade.
+Bruno a accepté de poursuivre avec SQLite pour le moment. Une vérification
+ultérieure en lecture seule montre que l'application PostgreSQL with pgvector
+0.1.0 est déjà installée et démarrée sur son Home Assistant. Mon évaluation
+précédente surestimait donc le besoin d'un nouveau service : le coût de ce
+service existe déjà. Cela ne démontre pas qu'une base soit configurée pour
+Memory ni que le serveur Memory sache s'y connecter. La décision reste à
+réexaminer avec ce nouveau fait ; aucune migration n'a été effectuée.
 
 ## Décision déjà prise pour la vectorisation
 
@@ -51,5 +55,6 @@ transparente.
 4. Vérifier les sauvegardes et restaurations des deux stockages et mesurer
    les ressources sur le matériel cible avant une éventuelle décision.
 
-Aucune migration ni installation PostgreSQL n'a été effectuée. La configuration
+Aucune migration n'a été effectuée. PostgreSQL with pgvector 0.1.0 est déjà
+présent et démarré sur l'installation observée. La configuration
 actuelle ne doit pas être présentée comme compatible PostgreSQL.
