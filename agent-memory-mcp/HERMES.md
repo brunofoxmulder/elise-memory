@@ -128,3 +128,38 @@ validation explicite de Bruno.
 Sources : [contrôle HTTP de Memory épinglé](https://github.com/ipiton/agent-memory-mcp/blob/dc404e4f3be140ea5c4e7a4fa282c02427e7cb9b/internal/server/http_security.go),
 [configuration MCP Hermès v0.23.0](https://github.com/NousResearch/hermes-agent/blob/v0.23.0/website/docs/user-guide/features/mcp.md),
 [documentation Home Assistant sur les applications](https://developers.home-assistant.io/docs/apps/).
+
+
+## Variante réseau interne préparée — 12 novembre 2026
+
+Le fichier `tests/proposition-reseau-interne.patch` est une proposition à
+examiner séparément ; il n'est pas appliqué au manifeste de la candidate. Il
+remplace le réseau hôte par le réseau interne et retire la publication du port.
+Selon la documentation officielle Home Assistant, les applications du réseau
+interne peuvent se joindre par leur nom DNS et le port de destination. Ce
+mécanisme ne fournit pas d'identité ni de protection entre applications.
+
+Pour le nom exact, utiliser l'identifiant complet réel de l'application tel
+qu'affiché par Supervisor, en remplaçant les tirets bas par des tirets. Le
+préfixe de dépôt dépend de l'installation et ne doit pas être deviné.
+
+Points à vérifier sur un banc HAOS avant toute décision :
+
+- Résolution du nom et accès MCP depuis le processus de Home Assistant Core et
+  le profil d'Hermès, sur le port interne 18080 ; les noms et adresses actuels
+  vers l'hôte ne conviendront pas nécessairement après la transition.
+- Absence d'accès depuis le réseau domestique, en tenant compte des autres
+  routes et relais éventuellement présents.
+- Préservation des données, des outils Assist et des fonctions d'Hermès après
+  bascule, puis retour à la configuration antérieure si nécessaire.
+- Ollama : `127.0.0.1` désigne le conteneur Memory après cette bascule, et
+  non l'hôte ou un autre conteneur. Si Ollama est ailleurs, son adresse
+  joignable doit être configurée ; ne pas présumer qu'il est déjà installé.
+
+Les essais Docker de la candidate précédente ne constituent pas un test du
+réseau Supervisor ou de la variante ci-dessus. Le réseau interne réduit
+l'exposition potentielle, mais toutes les applications capables de joindre le
+service peuvent encore utiliser les droits exposés, y compris la suppression.
+
+Sources : [réseau des applications](https://contributors.home-assistant.io/apps/guides/communication/),
+[configuration réseau](https://contributors.home-assistant.io/apps/reference/configuration/).
