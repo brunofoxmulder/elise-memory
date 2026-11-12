@@ -185,9 +185,9 @@ OCR appropriée. La lecture de tous les éléments visuels, formules ou mises en
 page et la fidélité des résumés ne sont pas garanties.
 
 Le manifeste `main` du dépôt `elise-hermes-haos` examiné ne monte que le volume
-de données de l'application sur `/opt/data`. Le fait de monter `/share` dans
-Memory ne le monte pas dans Hermès : un accès direct aux documents est donc à
-vérifier séparément sur la version réellement installée. Le manifeste examiné
+de données de l'application sur `/opt/data`. La candidate Memory ne monte pas `/share`. L'accès direct aux documents par
+Hermès est à vérifier séparément sur la version réellement installée ; Bruno
+pourra lui transmettre les documents ou leurs adresses. Le manifeste examiné
 indique 0.1.0 alors que la version 0.1.2 est rapportée en service ; il serait
 incorrect d'en déduire la configuration réelle de celle-ci.
 
