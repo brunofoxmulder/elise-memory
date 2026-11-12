@@ -27,7 +27,7 @@ utilise le fournisseur sélectionné :
 | Adresse | Configurable ; API OpenAI par défaut | Configurable ; `http://127.0.0.1:11434` par défaut |
 | Modèle | Configurable ; `text-embedding-3-small` par défaut | Configurable ; `bge-m3:latest` par défaut |
 | Dimensions | Configurables ; 1024 par défaut | Configurables ; 1024 par défaut |
-| Clé API | Champ masqué, requis par la candidate | Non requise par la candidate |
+| Clé API | Champ masqué, requis pour vectoriser | Non requise |
 
 Le fournisseur API doit accepter le format attendu par le client OpenAI,
 y compris le paramètre de dimension. Pour Ollama, le modèle doit être installé
@@ -44,6 +44,11 @@ cas d'échec. Une indisponibilité peut donc empêcher la vectorisation ou le
 rappel sémantique ; elle ne constitue pas une raison d'inventer une réponse.
 
 ## Continuité en cas de panne
+
+En l'absence de clé pour l'API choisie, Memory démarre avec la recherche par
+texte et inscrit un avertissement dans son journal ; la vectorisation reste
+indisponible. Le mode de diagnostic strict peut néanmoins faire échouer la
+recherche et doit rester désactivé en usage courant.
 
 Décision de Bruno : Memory doit continuer à répondre lorsque le fournisseur
 de vectorisation est indisponible. Le mode de diagnostic strict reste désactivé
