@@ -62,6 +62,31 @@ Hermès. La liste présente la mémoire et la recherche documentaire ; `memory`
 regroupe lecture, création, modification et suppression, conformément au choix
 de Bruno. Ce filtrage ne protège pas le serveur des autres clients réseau.
 
+## Passage de relais depuis Élise
+
+Quand Bruno transmet à Hermès un document ou un texte préparé par Élise,
+utiliser le modèle suivant après vérification de la connexion à Memory :
+
+> Lis le contenu que je te transmets et relève les informations utiles à
+> conserver. Pour chaque information, recherche d'abord dans Memory les
+> souvenirs proches. Garde la source, la date du document lorsqu'elle est
+> connue et distingue les faits confirmés des hypothèses ou points à vérifier.
+> Crée les souvenirs manquants ; mets à jour les souvenirs existants quand la
+> correction est justifiée par la source. Si les sources se contredisent ou si
+> une information est ambiguë, conserve la trace des deux versions et
+> indique-moi le point à éclaircir. Ne déduis pas qu'une information est fausse
+> simplement parce qu'elle est absente du document. Ne supprime ni ne fusionne
+> des souvenirs sur la seule base d'une ressemblance ; présente-moi les cas
+> incertains. Signale les documents ou passages que tu n'as pas pu lire.
+> Termine par un bilan des créations, mises à jour, cas incertains et erreurs.
+
+Cette instruction organise le transfert demandé ; elle ne remplace pas les
+autorisations techniques. Bruno autorise Hermès à modifier et supprimer des
+souvenirs ; la prudence sur un transfert en masse évite de confondre une
+ressemblance avec une preuve. Les demandes explicites ultérieures de Bruno
+priment. Le texte transmis est une source datée, pas nécessairement une
+représentation exhaustive ni toujours actuelle des souvenirs de ChatGPT.
+
 ## Conditions préalables à la mise en service
 
 1. Reconstituer la configuration et les accès réellement en place, sans
