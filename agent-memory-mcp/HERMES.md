@@ -167,3 +167,36 @@ service peuvent encore utiliser les droits exposés, y compris la suppression.
 
 Sources : [réseau des applications](https://contributors.home-assistant.io/apps/guides/communication/),
 [configuration réseau](https://contributors.home-assistant.io/apps/reference/configuration/).
+
+
+## Lecture de documents par Hermès — examen du code v0.23.0
+
+Le code amont de `read_file` prévoit l'extraction des fichiers DOCX et XLSX,
+ainsi que des notebooks, sans convertisseur externe pour ces formats. Le
+parcours PDF et d'autres formats dépend d'un composant optionnel ; la skill PDF
+fournit aussi des méthodes d'extraction avec leurs propres dépendances. Leur
+présence et leur fonctionnement dans l'image réellement installée ne sont pas
+démontrés par la lecture du dépôt.
+
+Limites observées dans le code : limite de 50 Mio pour les documents concernés,
+limite XLSX de 5 000 lignes et 256 colonnes par feuille, et pagination ou
+limitation possible des textes renvoyés. Un PDF scanné nécessite une solution
+OCR appropriée. La lecture de tous les éléments visuels, formules ou mises en
+page et la fidélité des résumés ne sont pas garanties.
+
+Le manifeste `main` du dépôt `elise-hermes-haos` examiné ne monte que le volume
+de données de l'application sur `/opt/data`. Le fait de monter `/share` dans
+Memory ne le monte pas dans Hermès : un accès direct aux documents est donc à
+vérifier séparément sur la version réellement installée. Le manifeste examiné
+indique 0.1.0 alors que la version 0.1.2 est rapportée en service ; il serait
+incorrect d'en déduire la configuration réelle de celle-ci.
+
+La voie cible reste : Hermès lit le document accessible, repère ses limites
+d'extraction, prépare des faits sourcés, puis utilise Memory pour les gérer.
+Avant d'enregistrer, il convient de signaler toute partie non lue, incertaine
+ou interprétée. Ne pas inventer un fait ; en cas de conflit, conserver les
+sources et les dates. Assist reste également capable d'alimenter Memory.
+
+Sources exactes : [extraction Hermès v0.23.0](https://github.com/NousResearch/hermes-agent/blob/v0.23.0/tools/read_extract.py),
+[skill PDF v0.23.0](https://github.com/NousResearch/hermes-agent/blob/v0.23.0/skills/productivity/pdf/SKILL.md),
+[manifest Hermès du dépôt](https://github.com/brunofoxmulder/elise-hermes-haos/blob/main/elise_hermes_haos/config.yaml).
