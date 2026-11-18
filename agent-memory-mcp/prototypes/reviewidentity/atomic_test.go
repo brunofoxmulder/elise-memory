@@ -74,3 +74,19 @@ func TestAtomicReviewConcurrentConnections(t *testing.T){
  if err:=db1.QueryRow("SELECT seen_count FROM prototype_atomic_review_links WHERE fingerprint='one-proposal'").Scan(&count);err!=nil{t.Fatal(err)}
  if records!=1||links!=1||count!=n{t.Fatalf("records=%d links=%d count=%d, want 1/1/%d",records,links,count,n)}
 }
+
+func TestAtomicReviewRejectsMemoryIDCollision(t *testing.T){
+ db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+ defer db.Close();db.SetMaxOpenConns(1)
+ store,err:=NewAtomicReviewStore(db);if err!=nil{t.Fatal(err)}
+ if _,_,err:=store.SaveOccurrence(context.Background(),"first-fingerprint","same-id","first body",time.Now());err!=nil{t.Fatal(err)}
+ if _,_,err:=store.SaveOccurrence(context.Background(),"different-fingerprint","same-id","second body",time.Now());err==nil{
+  t.Fatal("different fingerprint unexpectedly reused existing memory ID")
+ }
+ var links int
+ if err:=db.QueryRow("SELECT count(*) FROM prototype_atomic_review_links").Scan(&links);err!=nil{t.Fatal(err)}
+ if links!=1{t.Fatalf("collision created %d links, want 1",links)}
+ var content string
+ if err:=db.QueryRow("SELECT content FROM prototype_review_records WHERE memory_id='same-id'").Scan(&content);err!=nil{t.Fatal(err)}
+ if content!="first body"{t.Fatalf("collision altered original content: %q",content)}
+}
