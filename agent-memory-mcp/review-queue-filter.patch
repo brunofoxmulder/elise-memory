@@ -1,7 +1,7 @@
 diff --git a/internal/sessionclose/plan.go b/internal/sessionclose/plan.go
 --- a/internal/sessionclose/plan.go
 +++ b/internal/sessionclose/plan.go
-@@ -67,7 +67,9 @@ func (s *Service) planActions(ctx context.Context, summary memory.SessionSummary, candidates []*extractedCandidate) ([]CandidateAction, []string, error) {
+@@ -68,6 +68,8 @@ func (s *Service) planActions(ctx context.Context, summary memory.SessionSummary, candidates []*extractedCandidate) ([]CandidateAction, []string, error) {
  	filteredExisting := make([]*memory.Memory, 0, len(existing))
  	for _, item := range existing {
 -		if memory.IsSessionSummaryMemory(item) {
