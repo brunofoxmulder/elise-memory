@@ -2,7 +2,7 @@ diff --git a/internal/memory/review_occurrence_test.go b/internal/memory/review_
 new file mode 100644
 --- /dev/null
 +++ b/internal/memory/review_occurrence_test.go
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,171 @@
 +package memory
 +
 +import (
@@ -132,4 +132,45 @@ new file mode 100644
 + var rows int
 + if err:=second.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM memories WHERE id=?`,firstID).Scan(&rows);err!=nil {t.Fatal(err)}
 + if rows!=1 {t.Fatalf("shared memory rows=%d",rows)}
++}
++func TestReviewOccurrenceTwoStoresConcurrent(t *testing.T) {
++ path:=filepath.Join(t.TempDir(),"shared-concurrent.db")
++ first,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer first.Close()
++ second,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer second.Close()
++ ctx:=context.Background()
++ // Exercise independent store locks against a shared SQLite unique index.
++ // SQLite may return BUSY rather than waiting: that is a test failure and
++ // requires a bounded retry policy, not a silent lost occurrence.
++ const workers=16
++ var wg sync.WaitGroup
++ errs:=make(chan error,workers)
++ ids:=make(chan string,workers)
++ for i:=0;i<workers;i++ {
++  store:=first
++  if i%2==1 {store=second}
++  wg.Add(1)
++  go func(s *Store){
++   defer wg.Done()
++   id,_,err:=s.StoreReviewOccurrence(ctx,"concurrent-shared",reviewOccurrenceFixture())
++   if err!=nil {errs<-err;return}
++   ids<-id
++  }(store)
++ }
++ wg.Wait()
++ close(errs)
++ close(ids)
++ for err:=range errs {t.Fatalf("cross-store concurrent write: %v",err)}
++ var firstID string
++ for id:=range ids {
++  if firstID=="" {firstID=id}
++  if id!=firstID {t.Fatalf("two review records created: %s vs %s",firstID,id)}
++ }
++ var count,rows int
++ if err:=first.db.QueryRowContext(ctx,`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"concurrent-shared").Scan(&count);err!=nil {t.Fatal(err)}
++ if err:=first.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM memories WHERE id=?`,firstID).Scan(&rows);err!=nil {t.Fatal(err)}
++ if count!=workers || rows!=1 {t.Fatalf("count=%d rows=%d, want %d and 1",count,rows,workers)}
 +}
