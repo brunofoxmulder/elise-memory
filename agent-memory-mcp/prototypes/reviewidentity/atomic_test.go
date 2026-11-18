@@ -142,3 +142,32 @@ func TestAtomicReviewRejectsInvalidInputsWithoutWrites(t *testing.T){
  if err:=db.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&n);err!=nil{t.Fatal(err)}
  if n!=0{t.Fatalf("invalid inputs wrote %d records",n)}
 }
+
+func TestSaveEventIdempotentReplay(t *testing.T){
+ db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+ defer db.Close();db.SetMaxOpenConns(1)
+ store,err:=NewAtomicReviewStore(db);if err!=nil{t.Fatal(err)}
+ at:=time.Now()
+ id,n,err:=store.SaveEvent(context.Background(),"event-1","fingerprint","m1","original",at)
+ if err!=nil||id!="m1"||n!=1{t.Fatalf("first: %s %d %v",id,n,err)}
+ id,n,err=store.SaveEvent(context.Background(),"event-1","fingerprint","m2","changed",at)
+ if err!=nil||id!="m1"||n!=1{t.Fatalf("replay: %s %d %v",id,n,err)}
+ id,n,err=store.SaveEvent(context.Background(),"event-2","fingerprint","m3","changed",at)
+ if err!=nil||id!="m1"||n!=2{t.Fatalf("new event: %s %d %v",id,n,err)}
+ if _,_,err:=store.SaveEvent(context.Background(),"event-1","other","m4","body",at);err==nil{t.Fatal("event collision not rejected")}
+ var records,events int
+ if err:=db.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&records);err!=nil{t.Fatal(err)}
+ if err:=db.QueryRow("SELECT count(*) FROM prototype_review_events").Scan(&events);err!=nil{t.Fatal(err)}
+ if records!=1||events!=2{t.Fatalf("records=%d events=%d",records,events)}
+}
+func TestSaveEventRollbackOnDecidedReview(t *testing.T){
+ db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+ defer db.Close();db.SetMaxOpenConns(1)
+ store,err:=NewAtomicReviewStore(db);if err!=nil{t.Fatal(err)}
+ if _,_,err:=store.SaveEvent(context.Background(),"event-1","fingerprint","m1","body",time.Now());err!=nil{t.Fatal(err)}
+ if _,err:=db.Exec("UPDATE prototype_atomic_review_links SET decision='resolved' WHERE fingerprint='fingerprint'");err!=nil{t.Fatal(err)}
+ if _,_,err:=store.SaveEvent(context.Background(),"event-2","fingerprint","m2","new",time.Now());err==nil{t.Fatal("resolved review accepted new event")}
+ var events int
+ if err:=db.QueryRow("SELECT count(*) FROM prototype_review_events").Scan(&events);err!=nil{t.Fatal(err)}
+ if events!=1{t.Fatalf("failed event was committed: %d",events)}
+}
