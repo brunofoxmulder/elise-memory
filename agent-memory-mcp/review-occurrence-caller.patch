@@ -1,6 +1,14 @@
 diff --git a/internal/server/session_tracker.go b/internal/server/session_tracker.go
 --- a/internal/server/session_tracker.go
 +++ b/internal/server/session_tracker.go
+@@ -3,6 +3,7 @@
+ import (
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 	"strings"
+ 	"sync"
+ 	"time"
 @@ -562,3 +562,7 @@
 -		if err := st.store.Store(ctx, mem); err != nil {
 +		fingerprint := reviewQueueProposalFingerprint(result.Summary, action)
