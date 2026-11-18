@@ -43,8 +43,8 @@ func (s *AtomicReviewStore) SaveOccurrence(ctx context.Context,fingerprint,memor
  if err!=nil{return "",0,fmt.Errorf("begin review transaction: %w",err)}
  defer tx.Rollback()
  // Insert a record only if this fingerprint is not already linked.
- // INSERT OR IGNORE avoids overwriting an existing review decision.
- _,err=tx.ExecContext(ctx,`INSERT OR IGNORE INTO prototype_review_records(memory_id,content)
+ // A duplicate memory ID for a DIFFERENT fingerprint must fail rather\n // than silently link two identities to the same record.
+ _,err=tx.ExecContext(ctx,`INSERT INTO prototype_review_records(memory_id,content)
  SELECT ?,? WHERE NOT EXISTS(
  SELECT 1 FROM prototype_atomic_review_links WHERE fingerprint=?
  )`,memoryID,content,fingerprint)
