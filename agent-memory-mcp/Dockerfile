@@ -8,6 +8,8 @@ COPY provider-lock.patch /tmp/provider-lock.patch
 RUN git apply --check /tmp/provider-lock.patch && git apply /tmp/provider-lock.patch
 COPY review-occurrence-integration.patch /tmp/review-occurrence-integration.patch
 RUN git apply --check /tmp/review-occurrence-integration.patch && git apply /tmp/review-occurrence-integration.patch
+COPY review-occurrence-caller.patch /tmp/review-occurrence-caller.patch
+RUN git apply --check /tmp/review-occurrence-caller.patch && git apply /tmp/review-occurrence-caller.patch
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /agent-memory-mcp ./cmd/agent-memory-mcp
 FROM $BUILD_FROM
 RUN apk add --no-cache ca-certificates jq
