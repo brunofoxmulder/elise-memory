@@ -6,6 +6,7 @@ import "strings"
 // payload. It is NOT a replacement for Fingerprint: the latter distinguishes
 // materially different candidate contents on the same subject.
 func SubjectKey(p Proposal) string {
+ p.TargetTitle = ""
  p.CandidateTitle = ""
  p.CandidateContent = ""
  return Fingerprint(p)
