@@ -20,6 +20,7 @@ func NewAtomicReviewStore(db *sql.DB)(*AtomicReviewStore,error){
    memory_id TEXT PRIMARY KEY,
    content TEXT NOT NULL
  )`,
+ `CREATE TABLE IF NOT EXISTS prototype_review_events (\n   event_id TEXT PRIMARY KEY,\n   fingerprint TEXT NOT NULL,\n   memory_id TEXT NOT NULL\n )`,
  `CREATE TABLE IF NOT EXISTS prototype_atomic_review_links (
    fingerprint TEXT PRIMARY KEY,
    memory_id TEXT NOT NULL UNIQUE REFERENCES prototype_review_records(memory_id),
@@ -65,5 +66,46 @@ func (s *AtomicReviewStore) SaveOccurrence(ctx context.Context,fingerprint,memor
  if errors.Is(err,sql.ErrNoRows){return "",0,errors.New("review already decided: new verified evidence required")}
  if err!=nil{return "",0,fmt.Errorf("upsert review link: %w",err)}
  if err=tx.Commit();err!=nil{return "",0,fmt.Errorf("commit review transaction: %w",err)}
+ return id,count,nil
+}
+
+// SaveEvent records a unique source event exactly once. Unlike SaveOccurrence,
+// retrying the same event ID does not increase seen_count. The event identity,
+// memory row and review link are committed in one SQLite transaction.
+func (s *AtomicReviewStore) SaveEvent(ctx context.Context,eventID,fingerprint,memoryID,content string,seenAt time.Time)(string,int,error){
+ if s==nil||s.db==nil{return "",0,errors.New("atomic store not initialized")}
+ if strings.TrimSpace(eventID)==""||strings.TrimSpace(fingerprint)==""||strings.TrimSpace(memoryID)==""||seenAt.IsZero(){return "",0,errors.New("event identity, fingerprint, memory ID and timestamp required")}
+ tx,err:=s.db.BeginTx(ctx,nil)
+ if err!=nil{return "",0,err}
+ defer tx.Rollback()
+ result,err:=tx.ExecContext(ctx,`INSERT INTO prototype_review_events(event_id,fingerprint,memory_id)
+ VALUES(?,?,?) ON CONFLICT(event_id) DO NOTHING`,eventID,fingerprint,memoryID)
+ if err!=nil{return "",0,fmt.Errorf("insert review event: %w",err)}
+ affected,err:=result.RowsAffected()
+ if err!=nil{return "",0,err}
+ if affected==0 {
+  var existingFingerprint string
+  if err:=tx.QueryRowContext(ctx,`SELECT fingerprint FROM prototype_review_events WHERE event_id=?`,eventID).Scan(&existingFingerprint);err!=nil{return "",0,err}
+  if existingFingerprint!=fingerprint{return "",0,errors.New("event ID reused for a different proposal")}
+  var id string
+  var count int
+  if err:=tx.QueryRowContext(ctx,`SELECT memory_id,seen_count FROM prototype_atomic_review_links WHERE fingerprint=?`,fingerprint).Scan(&id,&count);err!=nil{return "",0,err}
+  if err:=tx.Commit();err!=nil{return "",0,err}
+  return id,count,nil
+ }
+ _,err=tx.ExecContext(ctx,`INSERT INTO prototype_review_records(memory_id,content)
+ SELECT ?,? WHERE NOT EXISTS(SELECT 1 FROM prototype_atomic_review_links WHERE fingerprint=?)`,memoryID,content,fingerprint)
+ if err!=nil{return "",0,err}
+ var id string
+ var count int
+ err=tx.QueryRowContext(ctx,`INSERT INTO prototype_atomic_review_links(fingerprint,memory_id,seen_count,last_seen_at)
+ VALUES(?,?,1,?) ON CONFLICT(fingerprint) DO UPDATE SET
+ seen_count=prototype_atomic_review_links.seen_count+1,
+ last_seen_at=CASE WHEN excluded.last_seen_at > prototype_atomic_review_links.last_seen_at THEN excluded.last_seen_at ELSE prototype_atomic_review_links.last_seen_at END
+ WHERE prototype_atomic_review_links.decision='pending'
+ RETURNING memory_id,seen_count`,fingerprint,memoryID,seenAt.UTC().Format(time.RFC3339Nano)).Scan(&id,&count)
+ if errors.Is(err,sql.ErrNoRows){return "",0,errors.New("review already decided")}
+ if err!=nil{return "",0,err}
+ if err:=tx.Commit();err!=nil{return "",0,err}
  return id,count,nil
 }
