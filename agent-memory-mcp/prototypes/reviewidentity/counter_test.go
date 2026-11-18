@@ -82,3 +82,38 @@ func TestCounterSurvivesReopen(t *testing.T){
  if err!=nil{t.Fatal(err)}
  if count!=2{t.Fatalf("after reopening count %d, want 2",count)}
 }
+
+func TestCounterAcrossIndependentConnections(t *testing.T){
+ path:=filepath.Join(t.TempDir(),"shared.sqlite")
+ db1,err:=sql.Open("sqlite",path);if err!=nil{t.Fatal(err)}
+ defer db1.Close()
+ db2,err:=sql.Open("sqlite",path);if err!=nil{t.Fatal(err)}
+ defer db2.Close()
+ db1.SetMaxOpenConns(1)
+ db2.SetMaxOpenConns(1)
+ // WAL and busy timeout make competing SQLite connections explicit.
+ for _,db:=range []*sql.DB{db1,db2}{
+  if _,err:=db.Exec("PRAGMA busy_timeout=10000");err!=nil{t.Fatal(err)}
+  if _,err:=db.Exec("PRAGMA journal_mode=WAL");err!=nil{t.Fatal(err)}
+ }
+ a,err:=NewCounterStore(db1);if err!=nil{t.Fatal(err)}
+ b,err:=NewCounterStore(db2);if err!=nil{t.Fatal(err)}
+ const n=40
+ var wg sync.WaitGroup
+ errs:=make(chan error,n)
+ for i:=0;i<n;i++{
+  wg.Add(1)
+  target:=a
+  if i%2==1{target=b}
+  go func(store *CounterStore){
+   defer wg.Done()
+   _,err:=store.RecordOccurrence(context.Background(),"cross-connection",time.Now())
+   errs<-err
+  }(target)
+ }
+ wg.Wait();close(errs)
+ for err:=range errs{if err!=nil{t.Fatal(err)}}
+ var count int
+ if err:=db1.QueryRow("SELECT seen_count FROM prototype_review_occurrences WHERE fingerprint='cross-connection'").Scan(&count);err!=nil{t.Fatal(err)}
+ if count!=n{t.Fatalf("cross-connection count %d, want %d",count,n)}
+}
