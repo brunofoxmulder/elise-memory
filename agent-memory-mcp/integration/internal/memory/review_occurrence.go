@@ -2,80 +2,81 @@ package memory
 
 import (
  "context"
- "database/sql"
  "errors"
  "fmt"
  "strings"
- "time"
 
  "github.com/google/uuid"
 )
 
-// StoreReviewOccurrence is the intended real-store write boundary for review
-// queue items. Unlike the isolated prototype it writes to the actual memories
-// table, and publishes cache entries only after a successful SQL commit.
-// Integration into upstream build and caller is a separate gated step.
+// StoreReviewOccurrence stages the actual memories-table transaction.
+// This file is not part of the add-on build until an upstream patch is wired.
 func (ms *Store) StoreReviewOccurrence(ctx context.Context, fingerprint string, m *Memory) (string, int, error) {
  if ms == nil || m == nil || strings.TrimSpace(fingerprint) == "" {
-  return "", 0, errors.New("review fingerprint and memory are required")
+  return "", 0, errors.New("review fingerprint and memory required")
  }
- if !IsReviewQueueMemory(m) {
-  return "", 0, errors.New("only review-queue memories are accepted")
- }
+ if !IsReviewQueueMemory(m) { return "", 0, errors.New("review-queue memory required") }
  if err := m.Validate(); err != nil { return "", 0, err }
 
  ms.writeMu.Lock()
  defer ms.writeMu.Unlock()
 
- // The unique index on fingerprint is authoritative across processes.
- // This schema is additive and does not alter existing review decisions.
+ // DDL is additive; existing memories are not modified or backfilled.
  if _, err := ms.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS review_occurrence_links (
   fingerprint TEXT PRIMARY KEY,
   memory_id TEXT NOT NULL UNIQUE,
   seen_count INTEGER NOT NULL CHECK(seen_count >= 1),
   last_seen_unix_ns INTEGER NOT NULL
- )`); err != nil { return "", 0, fmt.Errorf("ensure review links: %w", err) }
+ )`); err != nil { return "", 0, fmt.Errorf("create review link schema: %w", err) }
 
  tx, err := ms.db.BeginTx(ctx, nil)
  if err != nil { return "", 0, err }
  defer tx.Rollback()
 
- var existingID string
- var existingCount int
- err = tx.QueryRowContext(ctx,
-  `SELECT memory_id, seen_count FROM review_occurrence_links WHERE fingerprint=?`, fingerprint).
-  Scan(&existingID, &existingCount)
- if err != nil && !errors.Is(err, sql.ErrNoRows) { return "", 0, err }
- if err == nil {
-  // A previously resolved/dismissed/deferred review must not be modified.
-  var tagsJSON string
-  if err := tx.QueryRowContext(ctx,`SELECT tags FROM memories WHERE id=?`,existingID).Scan(&tagsJSON);err!=nil{return "",0,err}
-  if strings.Contains(tagsJSON,"review:resolved") || strings.Contains(tagsJSON,"review:dismissed") || strings.Contains(tagsJSON,"review:deferred") {
-   return "",0,errors.New("review decision is protected")
-  }
-  nowNS:=ms.now().UTC().UnixNano()
-  if _,err:=tx.ExecContext(ctx,`UPDATE review_occurrence_links SET seen_count=seen_count+1,
-   last_seen_unix_ns=MAX(last_seen_unix_ns,?) WHERE fingerprint=?`,nowNS,fingerprint);err!=nil{return "",0,err}
-  if err:=tx.Commit();err!=nil{return "",0,err}
-  return existingID,existingCount+1,nil
+ if m.ID == "" { m.ID = uuid.NewString() }
+ now := ms.now()
+ // Claim the unique fingerprint FIRST, so competing SQLite writers serialize
+ // before any memory row is inserted. Never insert a throwaway duplicate row.
+ claim, err := tx.ExecContext(ctx, `INSERT INTO review_occurrence_links
+ (fingerprint,memory_id,seen_count,last_seen_unix_ns)
+ VALUES(?,?,1,?) ON CONFLICT(fingerprint) DO NOTHING`,
+ fingerprint,m.ID,now.UTC().UnixNano())
+ if err != nil { return "", 0, fmt.Errorf("claim review fingerprint: %w", err) }
+ claimed, err := claim.RowsAffected()
+ if err != nil { return "", 0, err }
+
+ if claimed == 1 {
+  m.CreatedAt, m.UpdatedAt, m.AccessedAt = now, now, now
+  if err := insertMemoryRow(tx,m); err != nil { return "", 0, err }
+  if err := tx.Commit(); err != nil { return "", 0, err }
+  ms.mu.Lock()
+  ms.cacheSetLocked(toCachedMemory(m))
+  ms.mu.Unlock()
+  return m.ID, 1, nil
  }
+ if claimed != 0 { return "", 0, fmt.Errorf("unexpected fingerprint claim count %d", claimed) }
 
- if m.ID=="" { m.ID=uuid.NewString() }
- now:=ms.now()
- m.CreatedAt=now
- m.UpdatedAt=now
- m.AccessedAt=now
- if err:=insertMemoryRow(tx,m);err!=nil{return "",0,err}
- if _,err:=tx.ExecContext(ctx,`INSERT INTO review_occurrence_links(fingerprint,memory_id,seen_count,last_seen_unix_ns)
- VALUES(?,?,1,?)`,fingerprint,m.ID,now.UTC().UnixNano());err!=nil{return "",0,err}
- if err:=tx.Commit();err!=nil{return "",0,err}
-
- ms.mu.Lock()
- ms.cacheSetLocked(toCachedMemory(m))
- ms.mu.Unlock()
- ms.logger.Info("Review occurrence stored")
- return m.ID,1,nil
+ // Exact JSON tag membership, not substring matching. The existence check
+ // rejects orphaned links; resolved/dismissed/deferred decisions are immutable.
+ var existingID string
+ var count int
+ err = tx.QueryRowContext(ctx, `UPDATE review_occurrence_links
+ SET seen_count=seen_count+1,
+ last_seen_unix_ns=MAX(last_seen_unix_ns,?)
+ WHERE fingerprint=?
+ AND EXISTS (
+   SELECT 1 FROM memories m
+   WHERE m.id=review_occurrence_links.memory_id
+   AND EXISTS (SELECT 1 FROM json_each(m.tags) WHERE value='review:required')
+   AND NOT EXISTS (
+     SELECT 1 FROM json_each(m.tags)
+     WHERE value IN ('review:resolved','review:dismissed','review:deferred')
+   )
+ )
+ RETURNING memory_id,seen_count`,now.UTC().UnixNano(),fingerprint).Scan(&existingID,&count)
+ if err != nil {
+  return "", 0, fmt.Errorf("review occurrence rejected or unavailable: %w", err)
+ }
+ if err := tx.Commit(); err != nil { return "", 0, err }
+ return existingID, count, nil
 }
-
-// Compile-time check for time.Time timestamp representation.
-var _ = time.Time{}
