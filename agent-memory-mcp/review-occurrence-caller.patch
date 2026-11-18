@@ -1,10 +1,13 @@
 diff --git a/internal/server/session_tracker.go b/internal/server/session_tracker.go
 --- a/internal/server/session_tracker.go
 +++ b/internal/server/session_tracker.go
-@@ -562,3 +562,4 @@
+@@ -562,3 +562,7 @@
 -		if err := st.store.Store(ctx, mem); err != nil {
 +		fingerprint := reviewQueueProposalFingerprint(result.Summary, action)
 +		if _, _, err := st.store.StoreReviewOccurrence(ctx, fingerprint, mem); err != nil {
++			if errors.Is(err, memory.ErrReviewDecisionProtected) {
++				continue
++			}
  			return err
  		}
 diff --git a/internal/server/review_occurrence_identity.go b/internal/server/review_occurrence_identity.go
