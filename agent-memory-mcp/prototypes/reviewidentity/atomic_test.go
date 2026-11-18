@@ -112,3 +112,33 @@ func TestAtomicReviewPreservesDecisions(t *testing.T){
   })
  }
 }
+
+func TestAtomicReviewOutOfOrderOccurrences(t *testing.T){
+ db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+ defer db.Close();db.SetMaxOpenConns(1)
+ store,err:=NewAtomicReviewStore(db);if err!=nil{t.Fatal(err)}
+ recent:=time.Date(2026,11,18,17,0,0,0,time.UTC)
+ older:=recent.Add(-2*time.Hour)
+ if _,_,err:=store.SaveOccurrence(context.Background(),"f","m1","body",recent);err!=nil{t.Fatal(err)}
+ if _,n,err:=store.SaveOccurrence(context.Background(),"f","m2","other",older);err!=nil||n!=2{t.Fatalf("repeat: n=%d err=%v",n,err)}
+ var last string
+ if err:=db.QueryRow("SELECT last_seen_at FROM prototype_atomic_review_links WHERE fingerprint='f'").Scan(&last);err!=nil{t.Fatal(err)}
+ if last!=recent.Format(time.RFC3339Nano){t.Fatalf("timestamp regressed: %q",last)}
+}
+
+func TestAtomicReviewRejectsInvalidInputsWithoutWrites(t *testing.T){
+ db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+ defer db.Close();db.SetMaxOpenConns(1)
+ store,err:=NewAtomicReviewStore(db);if err!=nil{t.Fatal(err)}
+ cases:=[]struct{fingerprint,id string;at time.Time}{
+  {" ","m1",time.Now()},
+  {"fingerprint"," ",time.Now()},
+  {"fingerprint","m1",time.Time{}},
+ }
+ for _,tc:=range cases{
+  if _,_,err:=store.SaveOccurrence(context.Background(),tc.fingerprint,tc.id,"body",tc.at);err==nil{t.Fatal("invalid input accepted")}
+ }
+ var n int
+ if err:=db.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&n);err!=nil{t.Fatal(err)}
+ if n!=0{t.Fatalf("invalid inputs wrote %d records",n)}
+}
