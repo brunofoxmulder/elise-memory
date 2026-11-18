@@ -1,0 +1,21 @@
+name: Agent Memory MCP — correctif B prototype
+on:
+  pull_request:
+    paths:
+      - 'agent-memory-mcp/prototypes/reviewidentity/**'
+      - '.github/workflows/agent-memory-correctif-b.yml'
+  workflow_dispatch:
+jobs:
+  identity-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Test identity prototype
+        working-directory: agent-memory-mcp/prototypes/reviewidentity
+        run: |
+          gofmt -l identity.go identity_test.go | tee /tmp/unformatted.txt
+          test ! -s /tmp/unformatted.txt
+          go test ./... -count=1 -v
