@@ -2,12 +2,13 @@ diff --git a/internal/memory/review_occurrence_test.go b/internal/memory/review_
 new file mode 100644
 --- /dev/null
 +++ b/internal/memory/review_occurrence_test.go
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,93 @@
 +package memory
 +
 +import (
 + "context"
 + "testing"
++ "sync"
 +)
 +
 +func reviewOccurrenceFixture() *Memory {
@@ -50,4 +51,48 @@ new file mode 100644
 + var got int
 + if err:=store.db.QueryRowContext(ctx,"SELECT seen_count FROM review_occurrence_links WHERE fingerprint='fingerprint-A'").Scan(&got);err!=nil {t.Fatal(err)}
 + if got!=2 {t.Fatalf("resolved review count changed to %d",got)}
++}
++func TestReviewOccurrenceDecisionStates(t *testing.T) {
++ for _,state:=range []string{"review:resolved","review:dismissed","review:deferred"} {
++  t.Run(state,func(t *testing.T){
++   store:=newTestStore(t)
++   ctx:=context.Background()
++   id,_,err:=store.StoreReviewOccurrence(ctx,"decision-key",reviewOccurrenceFixture())
++   if err!=nil {t.Fatal(err)}
++   if _,err:=store.db.ExecContext(ctx,`UPDATE memories SET tags=? WHERE id=?`,"[\""+state+"\"]",id);err!=nil {t.Fatal(err)}
++   if _,_,err:=store.StoreReviewOccurrence(ctx,"decision-key",reviewOccurrenceFixture());err==nil {t.Fatal("decision was reopened")}
++   var count int
++   if err:=store.db.QueryRowContext(ctx,`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"decision-key").Scan(&count);err!=nil {t.Fatal(err)}
++   if count!=1 {t.Fatalf("decision count changed: %d",count)}
++  })
++ }
++}
++
++func TestReviewOccurrenceConcurrentSameStore(t *testing.T) {
++ store:=newTestStore(t)
++ const workers=12
++ var wg sync.WaitGroup
++ errs:=make(chan error,workers)
++ ids:=make(chan string,workers)
++ for i:=0;i<workers;i++ {
++  wg.Add(1)
++  go func(){
++   defer wg.Done()
++   id,_,err:=store.StoreReviewOccurrence(context.Background(),"same-proposal",reviewOccurrenceFixture())
++   if err!=nil {errs<-err;return}
++   ids<-id
++  }()
++ }
++ wg.Wait()
++ close(errs)
++ close(ids)
++ for err:=range errs {t.Fatal(err)}
++ var first string
++ for id:=range ids {
++  if first=="" {first=id}
++  if id!=first {t.Fatalf("concurrent duplicate: %q vs %q",id,first)}
++ }
++ var count int
++ if err:=store.db.QueryRow(`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"same-proposal").Scan(&count);err!=nil {t.Fatal(err)}
++ if count!=workers {t.Fatalf("count=%d, want %d",count,workers)}
 +}
