@@ -1,0 +1,48 @@
+name: Agent Memory MCP — correctif B integration
+on:
+  pull_request:
+    paths:
+      - 'agent-memory-mcp/**'
+      - '.github/workflows/agent-memory-correctif-b.yml'
+  workflow_dispatch:
+jobs:
+  identity-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+      - name: Test identity prototype
+        working-directory: agent-memory-mcp/prototypes/reviewidentity
+        run: |
+          go mod tidy
+          go test ./... -count=1
+  upstream-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+      - name: Fetch pinned upstream and apply production-path patches
+        run: |
+          git clone https://github.com/ipiton/agent-memory-mcp.git /tmp/agent-memory-upstream
+          cd /tmp/agent-memory-upstream
+          git checkout dc404e4f3be140ea5c4e7a4fa282c02427e7cb9b
+          git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/provider-lock.patch"
+          git apply "$GITHUB_WORKSPACE/agent-memory-mcp/provider-lock.patch"
+          git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-integration.patch"
+          git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-integration.patch"
+          git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-caller.patch"
+          git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-caller.patch"
+          curl --fail --location --silent --show-error https://raw.githubusercontent.com/brunofoxmulder/elise-memory/65352fe8adadca22217bbd380ee90ae2c395a528/agent-memory-mcp/review-queue-filter.patch -o /tmp/review-queue-filter-A.patch
+          git apply --check /tmp/review-queue-filter-A.patch
+          git apply /tmp/review-queue-filter-A.patch
+          git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-tests.patch"
+          git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-tests.patch"
+      - name: Compile and test real upstream packages
+        working-directory: /tmp/agent-memory-upstream
+        run: |
+          go test ./internal/memory ./internal/server ./internal/sessionclose -count=1
+          go build ./cmd/agent-memory-mcp

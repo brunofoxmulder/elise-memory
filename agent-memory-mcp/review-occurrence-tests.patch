@@ -1,0 +1,199 @@
+diff --git a/internal/memory/review_occurrence_test.go b/internal/memory/review_occurrence_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/memory/review_occurrence_test.go
+@@ -0,0 +1,194 @@
++package memory
++
++import (
++ "context"
++ "errors"
++ "testing"
++ "sync"
++ "path/filepath"
++ "go.uber.org/zap"
++)
++
++func reviewOccurrenceFixture() *Memory {
++ return &Memory{
++  Title: "Review proposal",
++  Content: "Complete proposal content",
++  Type: TypeWorking,
++  Context: "maison-cognitive",
++  Importance: 0.5,
++  Tags: []string{"review:required","review-queue"},
++  Metadata: map[string]string{MetadataRecordKind: RecordKindReviewQueueItem},
++ }
++}
++
++func TestReviewOccurrenceDeduplicatesAndProtectsDecision(t *testing.T) {
++ store:=newTestStore(t)
++ ctx:=context.Background()
++ first:=reviewOccurrenceFixture()
++ id,count,err:=store.StoreReviewOccurrence(ctx,"fingerprint-A",first)
++ if err!=nil {t.Fatal(err)}
++ if id=="" || count!=1 {t.Fatalf("first occurrence id=%q count=%d",id,count)}
++ second:=reviewOccurrenceFixture()
++ secondID,count,err:=store.StoreReviewOccurrence(ctx,"fingerprint-A",second)
++ if err!=nil {t.Fatal(err)}
++ if secondID!=id || count!=2 {t.Fatalf("duplicate id=%q count=%d, expected %q,2",secondID,count,id)}
++ var records int
++ if err:=store.db.QueryRowContext(ctx,"SELECT count(*) FROM memories WHERE id=?",id).Scan(&records);err!=nil {t.Fatal(err)}
++ if records!=1 {t.Fatalf("expected one memory row, got %d",records)}
++
++ // A different fingerprint is a different proposal even if title is equal.
++ distinctID,distinctCount,err:=store.StoreReviewOccurrence(ctx,"fingerprint-B",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ if distinctID==id || distinctCount!=1 {t.Fatal("different proposal was merged")}
++
++ // Simulate the existing review-resolution write path: no reopen by repetition.
++ if _,err:=store.db.ExecContext(ctx,`UPDATE memories SET tags='["review:resolved"]' WHERE id=?`,id);err!=nil {t.Fatal(err)}
++ if _,_,err:=store.StoreReviewOccurrence(ctx,"fingerprint-A",reviewOccurrenceFixture());err==nil {
++  t.Fatal("resolved review must not be reopened or incremented")
++ }
++ var got int
++ if err:=store.db.QueryRowContext(ctx,"SELECT seen_count FROM review_occurrence_links WHERE fingerprint='fingerprint-A'").Scan(&got);err!=nil {t.Fatal(err)}
++ if got!=2 {t.Fatalf("resolved review count changed to %d",got)}
++}
++func TestReviewOccurrenceDecisionStates(t *testing.T) {
++ for _,state:=range []string{"review:resolved","review:dismissed","review:deferred"} {
++  t.Run(state,func(t *testing.T){
++   store:=newTestStore(t)
++   ctx:=context.Background()
++   id,_,err:=store.StoreReviewOccurrence(ctx,"decision-key",reviewOccurrenceFixture())
++   if err!=nil {t.Fatal(err)}
++   if _,err:=store.db.ExecContext(ctx,`UPDATE memories SET tags=? WHERE id=?`,"[\""+state+"\"]",id);err!=nil {t.Fatal(err)}
++   if _,_,err:=store.StoreReviewOccurrence(ctx,"decision-key",reviewOccurrenceFixture());!errors.Is(err,ErrReviewDecisionProtected) {t.Fatalf("expected protected-decision sentinel, got %v",err)}
++   var count int
++   if err:=store.db.QueryRowContext(ctx,`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"decision-key").Scan(&count);err!=nil {t.Fatal(err)}
++   if count!=1 {t.Fatalf("decision count changed: %d",count)}
++  })
++ }
++}
++
++func TestReviewOccurrenceConcurrentSameStore(t *testing.T) {
++ store:=newTestStore(t)
++ const workers=12
++ var wg sync.WaitGroup
++ errs:=make(chan error,workers)
++ ids:=make(chan string,workers)
++ for i:=0;i<workers;i++ {
++  wg.Add(1)
++  go func(){
++   defer wg.Done()
++   id,_,err:=store.StoreReviewOccurrence(context.Background(),"same-proposal",reviewOccurrenceFixture())
++   if err!=nil {errs<-err;return}
++   ids<-id
++  }()
++ }
++ wg.Wait()
++ close(errs)
++ close(ids)
++ for err:=range errs {t.Fatal(err)}
++ var first string
++ for id:=range ids {
++  if first=="" {first=id}
++  if id!=first {t.Fatalf("concurrent duplicate: %q vs %q",id,first)}
++ }
++ var count int
++ if err:=store.db.QueryRow(`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"same-proposal").Scan(&count);err!=nil {t.Fatal(err)}
++ if count!=workers {t.Fatalf("count=%d, want %d",count,workers)}
++}
++func TestReviewOccurrenceProtectedDoesNotBlockNextProposal(t *testing.T) {
++ store:=newTestStore(t)
++ ctx:=context.Background()
++ id,_,err:=store.StoreReviewOccurrence(ctx,"first",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ if _,err:=store.db.ExecContext(ctx,`UPDATE memories SET tags='["review:dismissed"]' WHERE id=?`,id);err!=nil {t.Fatal(err)}
++ // Mirrors persistReviewQueue: a protected decision is skipped, not fatal.
++ if _,_,err:=store.StoreReviewOccurrence(ctx,"first",reviewOccurrenceFixture());err!=nil {
++  if !errors.Is(err,ErrReviewDecisionProtected) {t.Fatal(err)}
++ }
++ nextID,count,err:=store.StoreReviewOccurrence(ctx,"second",reviewOccurrenceFixture())
++ if err!=nil {t.Fatalf("next proposal blocked: %v",err)}
++ if nextID==id || count!=1 {t.Fatalf("next proposal id=%q count=%d",nextID,count)}
++}
++func TestReviewOccurrenceTwoStoresOneDatabase(t *testing.T) {
++ path:=filepath.Join(t.TempDir(),"shared.db")
++ first,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer first.Close()
++ second,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer second.Close()
++ ctx:=context.Background()
++ firstID,firstCount,err:=first.StoreReviewOccurrence(ctx,"shared-proposal",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ secondID,secondCount,err:=second.StoreReviewOccurrence(ctx,"shared-proposal",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ if firstID!=secondID || firstCount!=1 || secondCount!=2 {
++  t.Fatalf("cross-store dedup failed: %s/%d vs %s/%d",firstID,firstCount,secondID,secondCount)
++ }
++ var rows int
++ if err:=second.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM memories WHERE id=?`,firstID).Scan(&rows);err!=nil {t.Fatal(err)}
++ if rows!=1 {t.Fatalf("shared memory rows=%d",rows)}
++}
++func TestReviewOccurrenceTwoStoresConcurrent(t *testing.T) {
++ path:=filepath.Join(t.TempDir(),"shared-concurrent.db")
++ first,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer first.Close()
++ second,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer second.Close()
++ ctx:=context.Background()
++ // Exercise independent store locks against a shared SQLite unique index.
++ // SQLite may return BUSY rather than waiting: that is a test failure and
++ // requires a bounded retry policy, not a silent lost occurrence.
++ const workers=16
++ var wg sync.WaitGroup
++ errs:=make(chan error,workers)
++ ids:=make(chan string,workers)
++ for i:=0;i<workers;i++ {
++  store:=first
++  if i%2==1 {store=second}
++  wg.Add(1)
++  go func(s *Store){
++   defer wg.Done()
++   id,_,err:=s.StoreReviewOccurrence(ctx,"concurrent-shared",reviewOccurrenceFixture())
++   if err!=nil {errs<-err;return}
++   ids<-id
++  }(store)
++ }
++ wg.Wait()
++ close(errs)
++ close(ids)
++ for err:=range errs {t.Fatalf("cross-store concurrent write: %v",err)}
++ var firstID string
++ for id:=range ids {
++  if firstID=="" {firstID=id}
++  if id!=firstID {t.Fatalf("two review records created: %s vs %s",firstID,id)}
++ }
++ var count,rows int
++ if err:=first.db.QueryRowContext(ctx,`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"concurrent-shared").Scan(&count);err!=nil {t.Fatal(err)}
++ if err:=first.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM memories WHERE id=?`,firstID).Scan(&rows);err!=nil {t.Fatal(err)}
++ if count!=workers || rows!=1 {t.Fatalf("count=%d rows=%d, want %d and 1",count,rows,workers)}
++}
++func TestReviewOccurrenceOrphanIsNotAProtectedDecision(t *testing.T) {
++ store:=newTestStore(t)
++ ctx:=context.Background()
++ id,_,err:=store.StoreReviewOccurrence(ctx,"orphan-key",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ if _,err:=store.db.ExecContext(ctx,`DELETE FROM memories WHERE id=?`,id);err!=nil {t.Fatal(err)}
++ _,_,err=store.StoreReviewOccurrence(ctx,"orphan-key",reviewOccurrenceFixture())
++ if err==nil {t.Fatal("orphaned link was silently accepted")}
++ if errors.Is(err,ErrReviewDecisionProtected) {t.Fatalf("orphan incorrectly treated as protected decision: %v",err)}
++}
++func TestReviewOccurrenceInvalidStateIsNotAProtectedDecision(t *testing.T) {
++ store:=newTestStore(t)
++ ctx:=context.Background()
++ id,_,err:=store.StoreReviewOccurrence(ctx,"invalid-state",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ if _,err:=store.db.ExecContext(ctx,`UPDATE memories SET tags='["review-queue"]' WHERE id=?`,id);err!=nil {t.Fatal(err)}
++ _,_,err=store.StoreReviewOccurrence(ctx,"invalid-state",reviewOccurrenceFixture())
++ if err==nil {t.Fatal("invalid state was silently accepted")}
++ if errors.Is(err,ErrReviewDecisionProtected) {t.Fatalf("invalid state treated as decision: %v",err)}
++ var count int
++ if err:=store.db.QueryRowContext(ctx,`SELECT seen_count FROM review_occurrence_links WHERE fingerprint=?`,"invalid-state").Scan(&count);err!=nil {t.Fatal(err)}
++ if count!=1 {t.Fatalf("invalid state changed count to %d",count)}
++}
