@@ -17,15 +17,9 @@ type Evidence struct {
  NewRelevantSource bool
 }
 
-// MayCreateAfterDecision is a pure policy prototype. Deferred remains
-// unresolved and must be handled by the queue, not silently reopened.
+// MayCreateAfterDecision is a legacy compatibility guard. Unverified boolean
+// flags must NEVER authorize reopening. Use MayReopenWithVerifiedEvidence
+// after the integration has independently checked the source.
 func MayCreateAfterDecision(status ReviewDecision, evidence Evidence) bool {
- switch status {
- case Pending, Deferred:
-  return false
- case Resolved, Dismissed:
-  return evidence.TargetContentChanged || evidence.NewRelevantSource
- default:
-  return false
- }
+ return false
 }
