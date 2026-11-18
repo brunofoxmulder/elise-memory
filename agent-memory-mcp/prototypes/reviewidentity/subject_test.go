@@ -30,3 +30,9 @@ func TestSubjectKeyIgnoresPresentationTitles(t *testing.T){
  if SubjectKey(first)!=SubjectKey(second){t.Fatal("presentation-only title changes altered subject identity")}
  if Fingerprint(first)==Fingerprint(second){t.Fatal("full proposal fingerprints should still preserve original text differences")}
 }
+
+func TestSubjectAndProposalDomainsAreDistinct(t *testing.T) {
+ p:=Proposal{Project:"Maison Cognitive",Context:"review",Service:"memory",ActionKind:"create"}
+ if SubjectKey(p)==Fingerprint(p){t.Fatal("subject and proposal domains collided")}
+ if SubjectKey(p)!=SubjectKey(p){t.Fatal("subject key not deterministic")}
+}
