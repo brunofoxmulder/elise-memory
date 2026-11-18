@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - test/CH-REVIEWQ-20261118-correctif-A
+  pull_request:
+    paths:
+      - 'agent-memory-mcp/**'
+      - '.github/workflows/agent-memory-correctif-a.yml'
   workflow_dispatch:
 
 permissions:
