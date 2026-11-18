@@ -1,0 +1,48 @@
+diff --git a/internal/server/session_tracker.go b/internal/server/session_tracker.go
+--- a/internal/server/session_tracker.go
++++ b/internal/server/session_tracker.go
+@@ -3,6 +3,8 @@
+ import (
+ 	"context"
++	"crypto/sha256"
++	"encoding/hex"
+ 	"encoding/json"
+ 	"strings"
+ 	"sync"
+@@ -562,3 +562,4 @@
+-		if err := st.store.Store(ctx, mem); err != nil {
++		fingerprint := reviewQueueProposalFingerprint(result.Summary, action)
++		if _, _, err := st.store.StoreReviewOccurrence(ctx, fingerprint, mem); err != nil {
+ 			return err
+ 		}
+@@ -717,0 +718,30 @@
++// reviewQueueProposalFingerprint hashes the complete candidate, not the
++// 220-character presentation excerpt. Source-session metadata is excluded:
++// identical proposals from different sessions must deduplicate.
++func reviewQueueProposalFingerprint(summary memory.SessionSummary, action sessionclose.CandidateAction) string {
++ type identity struct {
++  Context string `json:"context"`
++  Service string `json:"service"`
++  Kind string `json:"kind"`
++  EngineeringType string `json:"engineering_type"`
++  TargetMemoryID string `json:"target_memory_id"`
++  TargetTitle string `json:"target_title"`
++  CandidateTitle string `json:"candidate_title"`
++  CandidateContent string `json:"candidate_content"`
++ }
++ key := identity{
++  Context: strings.TrimSpace(summary.Context),
++  Service: strings.TrimSpace(summary.Service),
++  Kind: string(action.Kind),
++  EngineeringType: string(action.EngineeringType),
++  TargetMemoryID: strings.TrimSpace(action.TargetMemoryID),
++  TargetTitle: strings.TrimSpace(action.TargetTitle),
++ }
++ if action.Candidate != nil {
++  key.CandidateTitle = strings.TrimSpace(action.Candidate.Title)
++  key.CandidateContent = strings.TrimSpace(action.Candidate.Content)
++ }
++ payload, _ := json.Marshal(key)
++ digest := sha256.Sum256(append([]byte("maison-cognitive/review-proposal/v1\x00"), payload...))
++ return hex.EncodeToString(digest[:])
++}
