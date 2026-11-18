@@ -34,3 +34,9 @@ Dépôt `ipiton/agent-memory-mcp`, commit épinglé `dc404e4f3be140ea5c4e7a4fa28
 ## Décision
 
 Aucune modification du Dockerfile, de l'add-on HAOS, de Home Assistant ou des mémoires de production. Ce document n'autorise ni fusion ni déploiement.
+
+## Audit de la branche de test — anomalie corrigée
+
+Le prototype `atomic.go` contenait des séquences littérales `\\n` dans une instruction SQL entre backticks pour `prototype_review_events`. SQLite aurait refusé la création de la table : les tests ajoutés n'étaient donc pas probants tant qu'ils n'étaient pas exécutés. La chaîne SQL a été corrigée au commit `98f5b81ebbb05feba5769934aeae3b25a00cf272`. Attendre une exécution CI réussie avant d'affirmer que `SaveEvent` fonctionne.
+
+**Priorité désormais** : ne plus ajouter de nouveaux prototypes. Implémenter le chemin de production `persistReviewQueue -> StoreReviewOccurrence` dans un patch appliqué au code amont épinglé, puis exécuter les tests combinés A+B. La preuve d'identité stable entre retries reste un prérequis pour activer le comptage exactement une fois.
