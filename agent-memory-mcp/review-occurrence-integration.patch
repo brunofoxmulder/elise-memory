@@ -2,7 +2,7 @@ diff --git a/internal/memory/review_occurrence.go b/internal/memory/review_occur
 new file mode 100644
 --- /dev/null
 +++ b/internal/memory/review_occurrence.go
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,103 @@
 +package memory
 +
 +import (
@@ -85,7 +85,22 @@ new file mode 100644
 + )
 + RETURNING memory_id,seen_count`,now.UTC().UnixNano(),fingerprint).Scan(&existingID,&count)
 + if errors.Is(err, sql.ErrNoRows) {
-+  return "", 0, ErrReviewDecisionProtected
++  // A missing link target or malformed state is corruption, not a reviewed
++  // decision. Only an explicit final decision may be silently suppressed.
++  var protectedID string
++  var protectedCount int
++  lookupErr := tx.QueryRowContext(ctx, `SELECT l.memory_id,l.seen_count
++   FROM review_occurrence_links l
++   JOIN memories m ON m.id=l.memory_id
++   WHERE l.fingerprint=?
++   AND EXISTS (SELECT 1 FROM json_each(m.tags)
++     WHERE value IN ('review:resolved','review:dismissed','review:deferred'))`,
++   fingerprint).Scan(&protectedID,&protectedCount)
++  if lookupErr == nil { return protectedID, protectedCount, ErrReviewDecisionProtected }
++  if !errors.Is(lookupErr, sql.ErrNoRows) {
++   return "", 0, fmt.Errorf("inspect review decision: %w", lookupErr)
++  }
++  return "", 0, errors.New("review occurrence link is orphaned or has an invalid state")
 + }
 + if err != nil { return "", 0, fmt.Errorf("review occurrence update failed: %w", err) }
 + if err := tx.Commit(); err != nil { return "", 0, err }
