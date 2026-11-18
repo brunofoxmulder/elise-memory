@@ -36,3 +36,13 @@ Une nouvelle clôture de session peut générer des fiches en attente équivalen
 L'absence de garde dans une fonction n'établit pas l'absence d'une déduplication plus bas dans `Store`. Vérifier les mécanismes du stockage, la sémantique de la review queue et les vrais cas d'incident avant de coder. Ne pas modifier la configuration de production sans autorisation explicite.
 
 **Décision :** B reste ouvert, sans patch ni déploiement. Correctif A et PR #19 inchangés dans leur périmètre fonctionnel.
+
+## Vérification complémentaire du stockage (18/11/2026)
+Source : `internal/memory/write.go` au commit amont figé.
+
+- `Store` valide le souvenir, calcule éventuellement son embedding (sauf pour les fiches review queue), prend `writeMu`, attribue un UUID si nécessaire, puis appelle `insertMemoryRow`.
+- La fonction ne vérifie pas l'existence d'un contenu ou d'une proposition équivalente. `writeMu` sérialise les écritures, mais ne constitue pas une règle d'unicité sémantique.
+- Les fiches review queue sont explicitement exclues de la génération d'embeddings, ce qui rend une déduplication par recherche vectorielle inadaptée à ce chemin.
+- **Conséquence :** une prévention fiable doit utiliser une identité métier stable et/ou une contrainte transactionnelle appropriée ; une simple recherche suivie d'un `Store` laisse un risque de concurrence.
+
+**Niveau de certitude :** élevé pour l'absence de déduplication dans `Store` ; moyen pour l'attribution de tous les doublons observés au `sessionTracker`, faute de reconstitution de chaque événement.
