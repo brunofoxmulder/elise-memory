@@ -36,7 +36,7 @@ jobs:
           git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-integration.patch"
           git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-caller.patch"
           git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-caller.patch"
-          curl --fail --location --silent --show-error https://raw.githubusercontent.com/brunofoxmulder/elise-memory/test/CH-REVIEWQ-20261118-correctif-A/agent-memory-mcp/review-queue-filter.patch -o /tmp/review-queue-filter-A.patch
+          curl --fail --location --silent --show-error https://raw.githubusercontent.com/brunofoxmulder/elise-memory/65352fe8adadca22217bbd380ee90ae2c395a528/agent-memory-mcp/review-queue-filter.patch -o /tmp/review-queue-filter-A.patch
           git apply --check /tmp/review-queue-filter-A.patch
           git apply /tmp/review-queue-filter-A.patch
           git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-tests.patch"
