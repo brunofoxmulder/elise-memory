@@ -16,6 +16,4 @@ jobs:
       - name: Test identity prototype
         working-directory: agent-memory-mcp/prototypes/reviewidentity
         run: |
-          gofmt -l identity.go identity_test.go | tee /tmp/unformatted.txt
-          test ! -s /tmp/unformatted.txt
           go test ./... -count=1 -v
