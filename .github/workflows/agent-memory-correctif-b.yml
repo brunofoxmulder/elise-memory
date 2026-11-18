@@ -16,4 +16,5 @@ jobs:
       - name: Test identity prototype
         working-directory: agent-memory-mcp/prototypes/reviewidentity
         run: |
+          go mod tidy
           go test ./... -count=1 -v
