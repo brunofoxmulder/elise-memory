@@ -23,6 +23,7 @@ func NewAtomicReviewStore(db *sql.DB)(*AtomicReviewStore,error){
    fingerprint TEXT PRIMARY KEY,
    memory_id TEXT NOT NULL UNIQUE REFERENCES prototype_review_records(memory_id),
    seen_count INTEGER NOT NULL CHECK(seen_count >= 1),
+   decision TEXT NOT NULL DEFAULT 'pending',
    last_seen_at TEXT NOT NULL
  )`,
  }
@@ -43,7 +44,8 @@ func (s *AtomicReviewStore) SaveOccurrence(ctx context.Context,fingerprint,memor
  if err!=nil{return "",0,fmt.Errorf("begin review transaction: %w",err)}
  defer tx.Rollback()
  // Insert a record only if this fingerprint is not already linked.
- // A duplicate memory ID for a DIFFERENT fingerprint must fail rather\n // than silently link two identities to the same record.
+ // A duplicate memory ID for a DIFFERENT fingerprint must fail rather
+ // than silently link two identities to the same record.
  _,err=tx.ExecContext(ctx,`INSERT INTO prototype_review_records(memory_id,content)
  SELECT ?,? WHERE NOT EXISTS(
  SELECT 1 FROM prototype_atomic_review_links WHERE fingerprint=?
@@ -56,7 +58,9 @@ func (s *AtomicReviewStore) SaveOccurrence(ctx context.Context,fingerprint,memor
  ON CONFLICT(fingerprint) DO UPDATE SET
  seen_count=prototype_atomic_review_links.seen_count+1,
  last_seen_at=excluded.last_seen_at
+ WHERE prototype_atomic_review_links.decision = 'pending'
  RETURNING memory_id,seen_count`,fingerprint,memoryID,seenAt.UTC().Format(time.RFC3339Nano)).Scan(&id,&count)
+ if errors.Is(err,sql.ErrNoRows){return "",0,errors.New("review already decided: new verified evidence required")}
  if err!=nil{return "",0,fmt.Errorf("upsert review link: %w",err)}
  if err=tx.Commit();err!=nil{return "",0,fmt.Errorf("commit review transaction: %w",err)}
  return id,count,nil
