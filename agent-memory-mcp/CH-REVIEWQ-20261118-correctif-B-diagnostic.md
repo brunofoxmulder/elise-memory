@@ -46,3 +46,21 @@ Source : `internal/memory/write.go` au commit amont figé.
 - **Conséquence :** une prévention fiable doit utiliser une identité métier stable et/ou une contrainte transactionnelle appropriée ; une simple recherche suivie d'un `Store` laisse un risque de concurrence.
 
 **Niveau de certitude :** élevé pour l'absence de déduplication dans `Store` ; moyen pour l'attribution de tous les doublons observés au `sessionTracker`, faute de reconstitution de chaque événement.
+
+## Identité des propositions : vérification du rendu
+Source supplémentaire : `internal/server/session_review_queue.go` (commit amont figé).
+
+- `reviewQueueTitle` assemble le titre de l'action et, le cas échéant, le service : **ce n'est pas une clé d'unicité**.
+- `reviewQueueContent` inclut action, handling, cible affichée ou identifiant, raison, trace et seulement les **220 premiers caractères** du contenu candidat.
+- Une comparaison sur le titre peut fusionner deux propositions différentes ; une comparaison sur le contenu affiché peut manquer des changements au-delà des 220 caractères.
+- Les champs `TargetMemoryID`, `Candidate.Content`, `Kind`, `Context`, `Service` et l'état de validation doivent être considérés séparément pour définir l'identité métier.
+
+### Critères de conception proposés (non validés)
+1. Définir une empreinte stable à partir de champs structurés normalisés : contexte, service, type d'action, identifiant cible (si présent), contenu **complet** du candidat, et éléments métier discriminants.
+2. Limiter la recherche d'équivalence aux fiches encore **en attente** ; une proposition résolue ne doit pas bloquer silencieusement une nouvelle demande.
+3. Préserver une nouvelle fiche lorsque la cible, le sens de l'action ou le contenu substantiel change.
+4. Traiter les créations simultanées par un mécanisme transactionnel ou une contrainte d'unicité explicite, pas par un simple `List` suivi de `Store`.
+5. Ne pas réutiliser `reviewQueueContent` comme empreinte : son contenu est une présentation tronquée.
+6. Avant tout patch, vérifier la représentation réelle des états de résolution et la compatibilité des anciens enregistrements.
+
+**Point non tranché :** une proposition répétée après résolution doit-elle être recréée systématiquement ou soumise à une règle de délai ? À arbitrer avec Bruno ; ne pas inventer cette politique.
