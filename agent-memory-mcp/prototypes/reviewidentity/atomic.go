@@ -5,6 +5,7 @@ import (
  "database/sql"
  "errors"
  "fmt"
+ "strings"
  "time"
 )
 
@@ -39,7 +40,8 @@ func NewAtomicReviewStore(db *sql.DB)(*AtomicReviewStore,error){
 // duplicate identities across database connections.
 func (s *AtomicReviewStore) SaveOccurrence(ctx context.Context,fingerprint,memoryID,content string,seenAt time.Time)(string,int,error){
  if s==nil||s.db==nil{return "",0,errors.New("atomic store not initialized")}
- if fingerprint==""||memoryID==""{return "",0,errors.New("fingerprint and memory ID required")}
+ if strings.TrimSpace(fingerprint)==""||strings.TrimSpace(memoryID)==""{return "",0,errors.New("fingerprint and memory ID required")}
+ if seenAt.IsZero(){return "",0,errors.New("occurrence timestamp required")}
  tx,err:=s.db.BeginTx(ctx,nil)
  if err!=nil{return "",0,fmt.Errorf("begin review transaction: %w",err)}
  defer tx.Rollback()
@@ -57,7 +59,7 @@ func (s *AtomicReviewStore) SaveOccurrence(ctx context.Context,fingerprint,memor
  VALUES(?,?,1,?)
  ON CONFLICT(fingerprint) DO UPDATE SET
  seen_count=prototype_atomic_review_links.seen_count+1,
- last_seen_at=excluded.last_seen_at
+ last_seen_at=CASE WHEN excluded.last_seen_at > prototype_atomic_review_links.last_seen_at THEN excluded.last_seen_at ELSE prototype_atomic_review_links.last_seen_at END
  WHERE prototype_atomic_review_links.decision = 'pending'
  RETURNING memory_id,seen_count`,fingerprint,memoryID,seenAt.UTC().Format(time.RFC3339Nano)).Scan(&id,&count)
  if errors.Is(err,sql.ErrNoRows){return "",0,errors.New("review already decided: new verified evidence required")}
