@@ -11,6 +11,8 @@ func TestVerifiedEvidenceGate(t *testing.T){
   {"deferred cannot reopen",Deferred,nil,false},
   {"no source",Resolved,func(e *VerifiedEvidence){e.SourceID=""},false},
   {"no timestamp",Resolved,func(e *VerifiedEvidence){e.ObservedAt=""},false},
+  {"invalid timestamp",Resolved,func(e *VerifiedEvidence){e.ObservedAt="yesterday"},false},
+  {"missing baseline",Resolved,func(e *VerifiedEvidence){e.TargetVersionBefore=""},false},
   {"no version change",Resolved,func(e *VerifiedEvidence){e.TargetVersionAfter="v1"},false},
   {"unverified",Resolved,func(e *VerifiedEvidence){e.Verified=false},false},
   {"irrelevant",Resolved,func(e *VerifiedEvidence){e.Relevant=false},false},
