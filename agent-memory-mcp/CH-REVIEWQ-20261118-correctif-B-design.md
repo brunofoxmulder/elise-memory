@@ -52,3 +52,18 @@ Sources lues au commit amont épinglé :
 - Les fiches historiques sans empreinte nécessitent une politique de compatibilité explicite ; aucune modification automatique de l'historique n'est autorisée.
 
 **Statut** : inspection statique et documentation seulement ; aucune preuve de test du correctif B à ce stade.
+
+## Vérification du schéma SQLite au commit figé
+Source : `internal/memory/memory.go`, fonction d'initialisation du magasin.
+
+- La table `memories` possède `id TEXT PRIMARY KEY`, `metadata TEXT`, `tags TEXT`, `context TEXT` et des dates ; aucun index d'unicité métier de proposition n'est déclaré dans ce schéma initial.
+- Index observés : type, contexte, importance et date de création. Ils ne garantissent pas l'unicité des fiches de review queue.
+- Le magasin charge les souvenirs dans un cache (`memories`, `contextIndex`) au démarrage. Une écriture directe en SQL doit préserver la cohérence du cache ; ne pas contourner les invariants de `Store`.
+
+### Choix technique provisoire
+Étudier une primitive dédiée au magasin qui coordonne transaction SQLite, verrou d'écriture et mise à jour du cache. Le design exact de l'index d'unicité, de la migration des données existantes et de la représentation du statut reste à tester. **Ne pas introduire une contrainte unique générale sur les souvenirs** : elle pourrait affecter des données hors review queue.
+
+### Test de panne indispensable
+Simuler une erreur entre incrément SQL et synchronisation du cache, puis vérifier qu'un redémarrage restitue un compteur exact et qu'aucun succès trompeur n'est retourné.
+
+**État :** analyse du schéma confirmée ; pas encore de code B ni de tests exécutés.
