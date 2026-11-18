@@ -2,7 +2,7 @@ diff --git a/internal/memory/review_occurrence_test.go b/internal/memory/review_
 new file mode 100644
 --- /dev/null
 +++ b/internal/memory/review_occurrence_test.go
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,130 @@
 +package memory
 +
 +import (
@@ -10,6 +10,8 @@ new file mode 100644
 + "errors"
 + "testing"
 + "sync"
++ "path/filepath"
++ "go.uber.org/zap"
 +)
 +
 +func reviewOccurrenceFixture() *Memory {
@@ -110,4 +112,24 @@ new file mode 100644
 + nextID,count,err:=store.StoreReviewOccurrence(ctx,"second",reviewOccurrenceFixture())
 + if err!=nil {t.Fatalf("next proposal blocked: %v",err)}
 + if nextID==id || count!=1 {t.Fatalf("next proposal id=%q count=%d",nextID,count)}
++}
++func TestReviewOccurrenceTwoStoresOneDatabase(t *testing.T) {
++ path:=filepath.Join(t.TempDir(),"shared.db")
++ first,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer first.Close()
++ second,err:=NewStore(path,nil,zap.NewNop())
++ if err!=nil {t.Fatal(err)}
++ defer second.Close()
++ ctx:=context.Background()
++ firstID,firstCount,err:=first.StoreReviewOccurrence(ctx,"shared-proposal",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ secondID,secondCount,err:=second.StoreReviewOccurrence(ctx,"shared-proposal",reviewOccurrenceFixture())
++ if err!=nil {t.Fatal(err)}
++ if firstID!=secondID || firstCount!=1 || secondCount!=2 {
++  t.Fatalf("cross-store dedup failed: %s/%d vs %s/%d",firstID,firstCount,secondID,secondCount)
++ }
++ var rows int
++ if err:=second.db.QueryRowContext(ctx,`SELECT COUNT(*) FROM memories WHERE id=?`,firstID).Scan(&rows);err!=nil {t.Fatal(err)}
++ if rows!=1 {t.Fatalf("shared memory rows=%d",rows)}
 +}
