@@ -2,17 +2,22 @@ diff --git a/internal/memory/review_occurrence.go b/internal/memory/review_occur
 new file mode 100644
 --- /dev/null
 +++ b/internal/memory/review_occurrence.go
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,88 @@
 +package memory
 +
 +import (
 + "context"
++ "database/sql"
 + "errors"
 + "fmt"
 + "strings"
 +
 + "github.com/google/uuid"
 +)
++
++// ErrReviewDecisionProtected means a previously reviewed proposal was suppressed.
++// Callers should skip this proposal without aborting the session close.
++var ErrReviewDecisionProtected = errors.New("review decision protected")
 +
 +// StoreReviewOccurrence stages the actual memories-table transaction.
 +// This file is not part of the add-on build until an upstream patch is wired.
@@ -79,9 +84,10 @@ new file mode 100644
 +   )
 + )
 + RETURNING memory_id,seen_count`,now.UTC().UnixNano(),fingerprint).Scan(&existingID,&count)
-+ if err != nil {
-+  return "", 0, fmt.Errorf("review occurrence rejected or unavailable: %w", err)
++ if errors.Is(err, sql.ErrNoRows) {
++  return "", 0, ErrReviewDecisionProtected
 + }
++ if err != nil { return "", 0, fmt.Errorf("review occurrence update failed: %w", err) }
 + if err := tx.Commit(); err != nil { return "", 0, err }
 + return existingID, count, nil
 +}
