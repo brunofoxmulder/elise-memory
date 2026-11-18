@@ -21,3 +21,12 @@ func TestSubjectKeyDoesNotTreatSessionMetadataAsIdentity(t *testing.T){
  if SubjectKey(p)==""{t.Fatal("subject key must not be empty")}
  if SubjectKey(p)!=SubjectKey(p){t.Fatal("subject key must be deterministic")}
 }
+
+func TestSubjectKeyIgnoresPresentationTitles(t *testing.T){
+ first:=Proposal{Project:"Maison Cognitive",Entity:"sensor.freezer",TargetMemoryID:"m1",TargetTitle:"Freezer safety",CandidateTitle:"Initial proposal",CandidateContent:"threshold 5 minutes"}
+ second:=first
+ second.TargetTitle="Sécurité congélateur"
+ second.CandidateTitle="Reformulation"
+ if SubjectKey(first)!=SubjectKey(second){t.Fatal("presentation-only title changes altered subject identity")}
+ if Fingerprint(first)==Fingerprint(second){t.Fatal("full proposal fingerprints should still preserve original text differences")}
+}
