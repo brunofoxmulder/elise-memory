@@ -1,0 +1,13 @@
+diff --git a/internal/sessionclose/plan.go b/internal/sessionclose/plan.go
+--- a/internal/sessionclose/plan.go
++++ b/internal/sessionclose/plan.go
+@@ -67,7 +67,9 @@ func (s *Service) planActions(ctx context.Context, summary memory.SessionSummary, candidates []*extractedCandidate) ([]CandidateAction, []string, error) {
+ 	filteredExisting := make([]*memory.Memory, 0, len(existing))
+ 	for _, item := range existing {
+-		if memory.IsSessionSummaryMemory(item) {
++		// Review queue entries are pending validation records, not knowledge.
++		// Never select them as targets for new session-close actions.
++		if memory.IsSessionSummaryMemory(item) || memory.IsReviewQueueMemory(item) {
+ 			continue
+ 		}
+ 		filteredExisting = append(filteredExisting, item)
