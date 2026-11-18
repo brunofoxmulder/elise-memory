@@ -29,15 +29,13 @@ func NewCounterStore(db *sql.DB) (*CounterStore,error) {
 func (s *CounterStore) RecordOccurrence(ctx context.Context,fingerprint string,seenAt time.Time)(int,error){
  if s==nil||s.db==nil{return 0,errors.New("counter store is not initialized")}
  if fingerprint=="" {return 0,errors.New("empty fingerprint")}
- _,err:=s.db.ExecContext(ctx,`INSERT INTO prototype_review_occurrences(fingerprint,seen_count,last_seen_at)
+ var count int
+ err:=s.db.QueryRowContext(ctx,`INSERT INTO prototype_review_occurrences(fingerprint,seen_count,last_seen_at)
  VALUES (?,1,?)
  ON CONFLICT(fingerprint) DO UPDATE SET
  seen_count=prototype_review_occurrences.seen_count+1,
- last_seen_at=excluded.last_seen_at`,fingerprint,seenAt.UTC().Format(time.RFC3339Nano))
+ last_seen_at=excluded.last_seen_at
+ RETURNING seen_count`,fingerprint,seenAt.UTC().Format(time.RFC3339Nano)).Scan(&count)
  if err!=nil{return 0,fmt.Errorf("record review occurrence: %w",err)}
- var count int
- if err=s.db.QueryRowContext(ctx,`SELECT seen_count FROM prototype_review_occurrences WHERE fingerprint=?`,fingerprint).Scan(&count);err!=nil{
-  return 0,fmt.Errorf("read review occurrence: %w",err)
- }
  return count,nil
 }
