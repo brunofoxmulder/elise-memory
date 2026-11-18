@@ -38,3 +38,17 @@ Décision fonctionnelle approuvée par Bruno : une fiche en attente par proposit
 
 ## Porte de validation
 Implémenter et exécuter les tests sur cette branche isolée ; demander ensuite à Bruno une validation explicite avant fusion ou déploiement. Une branche GitHub n'autorise aucune intervention dans Home Assistant.
+
+## Vérifications du code figé — persistance et résolution (18/11/2026)
+Sources lues au commit amont épinglé :
+- `internal/memory/write.go::Store` : `ms.writeMu` protège l'insertion individuelle et `insertMemoryRow` est appelé sous ce verrou ; **aucune recherche d'équivalence** dans ce chemin. L'absence d'embedding pour les fiches review queue est confirmée.
+- `internal/memory/store_sql.go::insertMemoryRow` : `INSERT INTO memories (... metadata ...)` sans `ON CONFLICT` d'empreinte ; la vérification `RowsAffected()==1` protège contre une insertion silencieusement ignorée, pas contre les doublons sémantiques.
+- `internal/review/resolve.go::ResolvedTags` : suppression des tags de review précédents puis ajout de `review:<resolution>` et `status:<resolution>`. Les résolutions admises incluent resolved, dismissed et deferred. Le simple changement de tags ne crée pas de verrou contre une re-proposition.
+
+### Conséquences de conception
+- Éviter un contrôle d'unicité uniquement dans `sessionTracker.persistReviewQueue` avec `List` puis `Store` : cette séquence n'est pas atomique et le verrou interne de `Store` ne couvre pas la lecture.
+- Concevoir une primitive **au niveau Store**, assurant sous une même section critique/transaction : rechercher une fiche en attente avec empreinte identique, incrémenter son compteur ou insérer une nouvelle fiche. Examiner les transactions SQLite avant de choisir l'implémentation.
+- Pour la réouverture après résolution, distinguer `resolved`, `dismissed`, `deferred` et préciser leur sens métier : `deferred` ne doit pas être interprété sans validation comme une décision définitive.
+- Les fiches historiques sans empreinte nécessitent une politique de compatibilité explicite ; aucune modification automatique de l'historique n'est autorisée.
+
+**Statut** : inspection statique et documentation seulement ; aucune preuve de test du correctif B à ce stade.
