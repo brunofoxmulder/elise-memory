@@ -18,10 +18,10 @@ index 0533ca2..f5735e0 100644
  
 diff --git a/internal/sessionclose/plan_review_targets_test.go b/internal/sessionclose/plan_review_targets_test.go
 new file mode 100644
-index 0000000..d1f83ff
+index 0000000..1655973
 --- /dev/null
 +++ b/internal/sessionclose/plan_review_targets_test.go
-@@ -0,0 +1,203 @@
+@@ -0,0 +1,206 @@
 +package sessionclose
 +
 +import (
@@ -197,31 +197,34 @@ index 0000000..d1f83ff
 +	}
 +}
 +
-+// TestReviewCardExcludedPerContext pins that exclusion is unconditional: a card
-+// in another context must not become the target either.
-+func TestReviewCardExcludedPerContext(t *testing.T) {
++// TestSameContextCardIsNotKnowledge is the discriminating case. Both records
++// live in the same context and carry the same text: the card must stay out of
++// the target pool while an ordinary memory is picked. Same context, same
++// wording, opposite outcome — the filter is what makes the difference, not the
++// context nor the phrasing.
++func TestSameContextCardIsNotKnowledge(t *testing.T) {
 +	_, store := newTestService(t)
 +
-+	other := &memory.Memory{
-+		Title:    "Review queue / " + rqTitle,
-+		Content:  rqContent,
-+		Type:     memory.TypeWorking,
-+		Context:  "autre-projet",
-+		Tags:     []string{"caveat"},
-+		Metadata: map[string]string{
-+			memory.MetadataEntity:         "caveat",
-+			memory.MetadataRecordKind:     memory.RecordKindReviewQueueItem,
-+			memory.MetadataReviewRequired: "true",
-+		},
-+	}
-+	if err := store.Store(context.Background(), other); err != nil {
-+		t.Fatalf("store foreign card: %v", err)
-+	}
++	card := seedReviewCard(t, store, "Review queue / "+rqTitle, rqContent)
 +
 +	actions := planFor(t, store, "Caveat: "+rqContent)
-+	target, _ := targetOf(t, actions)
++	target, action := targetOf(t, actions)
 +
-+	if target == other.ID {
-+		t.Fatalf("review card from another context was chosen as target")
++	if target != "" {
++		t.Fatalf("target = %q, want empty: card %s must not be a target", target, card.ID)
++	}
++	if action.Kind != ActionNew {
++		t.Fatalf("kind = %q, want %q", action.Kind, ActionNew)
++	}
++
++	// Control: the very same text, held by an ordinary memory of the same
++	// context, does produce a target. Without this half the test would only
++	// show that nothing matched.
++	_, store2 := newTestService(t)
++	knowledge := seedKnowledge(t, store2, rqTitle, rqContent)
++
++	control, _ := targetOf(t, planFor(t, store2, "Caveat: "+rqContent))
++	if control != knowledge.ID {
++		t.Fatalf("control target = %q, want the ordinary memory %q", control, knowledge.ID)
 +	}
 +}
