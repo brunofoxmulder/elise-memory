@@ -13,8 +13,8 @@ func TestReopenPolicy(t *testing.T) {
   {"pending new source",Pending,Evidence{NewRelevantSource:true},false},
   {"deferred new source",Deferred,Evidence{NewRelevantSource:true},false},
   {"resolved no change",Resolved,Evidence{},false},
-  {"resolved content changed",Resolved,Evidence{TargetContentChanged:true},true},
-  {"dismissed new source",Dismissed,Evidence{NewRelevantSource:true},true},
+  {"resolved content changed unverified",Resolved,Evidence{TargetContentChanged:true},false},
+  {"dismissed new source unverified",Dismissed,Evidence{NewRelevantSource:true},false},
   {"dismissed unchanged",Dismissed,Evidence{},false},
   {"unknown",ReviewDecision("unknown"),Evidence{NewRelevantSource:true},false},
  }
