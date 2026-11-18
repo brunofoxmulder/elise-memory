@@ -20,7 +20,11 @@ func NewAtomicReviewStore(db *sql.DB)(*AtomicReviewStore,error){
    memory_id TEXT PRIMARY KEY,
    content TEXT NOT NULL
  )`,
- `CREATE TABLE IF NOT EXISTS prototype_review_events (\n   event_id TEXT PRIMARY KEY,\n   fingerprint TEXT NOT NULL,\n   memory_id TEXT NOT NULL\n )`,
+ `CREATE TABLE IF NOT EXISTS prototype_review_events (
+   event_id TEXT PRIMARY KEY,
+   fingerprint TEXT NOT NULL,
+   memory_id TEXT NOT NULL
+ )`,
  `CREATE TABLE IF NOT EXISTS prototype_atomic_review_links (
    fingerprint TEXT PRIMARY KEY,
    memory_id TEXT NOT NULL UNIQUE REFERENCES prototype_review_records(memory_id),
