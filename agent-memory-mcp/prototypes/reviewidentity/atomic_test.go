@@ -90,3 +90,25 @@ func TestAtomicReviewRejectsMemoryIDCollision(t *testing.T){
  if err:=db.QueryRow("SELECT content FROM prototype_review_records WHERE memory_id='same-id'").Scan(&content);err!=nil{t.Fatal(err)}
  if content!="first body"{t.Fatalf("collision altered original content: %q",content)}
 }
+
+func TestAtomicReviewPreservesDecisions(t *testing.T){
+ for _,decision:=range []string{"resolved","dismissed","deferred"}{
+  t.Run(decision,func(t *testing.T){
+   db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+   defer db.Close();db.SetMaxOpenConns(1)
+   store,err:=NewAtomicReviewStore(db);if err!=nil{t.Fatal(err)}
+   if _,_,err:=store.SaveOccurrence(context.Background(),"fingerprint","original","body",time.Now());err!=nil{t.Fatal(err)}
+   if _,err:=db.Exec("UPDATE prototype_atomic_review_links SET decision=? WHERE fingerprint='fingerprint'",decision);err!=nil{t.Fatal(err)}
+   if _,_,err:=store.SaveOccurrence(context.Background(),"fingerprint","candidate","changed",time.Now());err==nil{
+    t.Fatal("decided proposal should not be incremented or reopened without verified new evidence")
+   }
+   var count int
+   var status string
+   if err:=db.QueryRow("SELECT seen_count,decision FROM prototype_atomic_review_links WHERE fingerprint='fingerprint'").Scan(&count,&status);err!=nil{t.Fatal(err)}
+   if count!=1||status!=decision{t.Fatalf("decision mutated: count=%d status=%s",count,status)}
+   var records int
+   if err:=db.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&records);err!=nil{t.Fatal(err)}
+   if records!=1{t.Fatalf("rollback left %d records",records)}
+  })
+ }
+}
