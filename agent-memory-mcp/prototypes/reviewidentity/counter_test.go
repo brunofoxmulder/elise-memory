@@ -117,3 +117,18 @@ func TestCounterAcrossIndependentConnections(t *testing.T){
  if err:=db1.QueryRow("SELECT seen_count FROM prototype_review_occurrences WHERE fingerprint='cross-connection'").Scan(&count);err!=nil{t.Fatal(err)}
  if count!=n{t.Fatalf("cross-connection count %d, want %d",count,n)}
 }
+
+func TestCounterFailedWriteDoesNotIncrement(t *testing.T){
+ db,err:=sql.Open("sqlite",":memory:");if err!=nil{t.Fatal(err)}
+ defer db.Close()
+ db.SetMaxOpenConns(1)
+ store,err:=NewCounterStore(db);if err!=nil{t.Fatal(err)}
+ if _,err:=store.RecordOccurrence(context.Background(),"guarded",time.Now());err!=nil{t.Fatal(err)}
+ // Abort the UPDATE to simulate a database failure during an UPSERT.
+ if _,err:=db.Exec(`CREATE TRIGGER fail_review_increment BEFORE UPDATE ON prototype_review_occurrences
+ BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END`);err!=nil{t.Fatal(err)}
+ if _,err:=store.RecordOccurrence(context.Background(),"guarded",time.Now());err==nil{t.Fatal("expected injected failure")}
+ var count int
+ if err:=db.QueryRow("SELECT seen_count FROM prototype_review_occurrences WHERE fingerprint='guarded'").Scan(&count);err!=nil{t.Fatal(err)}
+ if count!=1{t.Fatalf("failed UPSERT changed count to %d",count)}
+}
