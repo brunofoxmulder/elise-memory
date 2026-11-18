@@ -36,6 +36,8 @@ jobs:
           git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-integration.patch"
           git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-caller.patch"
           git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-caller.patch"
+          git apply --check "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-tests.patch"
+          git apply "$GITHUB_WORKSPACE/agent-memory-mcp/review-occurrence-tests.patch"
       - name: Compile and test real upstream packages
         working-directory: /tmp/agent-memory-upstream
         run: |
