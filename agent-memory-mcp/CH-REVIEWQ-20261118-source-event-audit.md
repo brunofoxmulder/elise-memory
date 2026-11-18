@@ -34,3 +34,19 @@ Sans cette garantie, `SaveEvent` doit rester expérimental ; ne pas l'appeler av
 - Reprise après redémarrage et après convergence d'un second processus.
 
 Décision : aucune écriture dans le magasin réel tant que ces garanties ne sont pas prouvées.
+
+## Vérification complémentaire du cycle de clôture — 18/11/2026
+
+Lecture du code amont épinglé, `internal/server/session_tracker.go` :
+
+- `flushFromIdle` copie `st.current`, puis le met à `nil` **avant** `flushSession`.
+- `flushWithNotification` copie également la session, ajoute l'événement, puis met `st.current` à `nil` **avant** l'analyse.
+- `Close` met `st.current` à `nil`, attend les checkpoints puis appelle `flushSession("shutdown", session)`.
+- `flushSession` appelle `Analyze(SaveRaw:true)`, puis seulement `persistReviewQueue`. En cas d'échec, il journalise et retourne, sans réinjecter la session dans le suivi.
+- L'identifiant `RawSummarySaved` est donc obtenu **après** l'analyse, pas à la prise en charge durable de la clôture.
+
+**Conclusion établie :** l'architecture actuelle ne comporte pas de journal durable de clôture garantissant une reprise après interruption. Un compteur de propositions dédupliquées n'est donc pas un compteur fiable d'événements distincts ou exactement une fois.
+
+**Décision de conception proposée (non validée pour intégration) :** créer un journal de clôture durable avant `Analyze`, avec `closure_id` immuable, état `pending/analyzed/persisted`, et un identifiant stable par action, puis enregistrer l'événement et incrémenter le compteur dans **la même transaction SQLite**. En cas de reprise, rejouer la clôture existante sans créer de nouveau `closure_id`. Il faudra distinguer l'identité du contenu de la proposition de l'identité de l'événement.
+
+**Limite importante :** l'identité stable de l'événement d'entrée (notamment pour les notifications externes) n'est pas encore démontrée. Le journal durable seul ne suffit pas à garantir l'exactement-une-fois si le même événement peut être réintroduit comme une nouvelle clôture.
