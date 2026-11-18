@@ -1,0 +1,26 @@
+name: Agent Memory MCP — correctif A (isolated validation)
+
+on:
+  push:
+    branches:
+      - test/CH-REVIEWQ-20261118-correctif-A
+  pull_request:
+    paths:
+      - 'agent-memory-mcp/**'
+      - '.github/workflows/agent-memory-correctif-a.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the candidate image (pinned upstream + both patches)
+        run: |
+          docker build --build-arg BUILD_FROM=alpine:3.22 -t agent-memory-candidate ./agent-memory-mcp
+      - name: Check candidate against two simulated clients (disposable data)
+        run: python3 agent-memory-mcp/tests/test_shared_clients.py
