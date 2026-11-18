@@ -3,6 +3,9 @@ package reviewidentity
 import (
  "context"
  "database/sql"
+ "fmt"
+ "path/filepath"
+ "sync"
  "testing"
  "time"
 
@@ -35,4 +38,39 @@ func TestAtomicReviewRollbackOnLinkFailure(t *testing.T){
  var rows int
  if err:=db.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&rows);err!=nil{t.Fatal(err)}
  if rows!=0{t.Fatalf("transaction left %d orphan records",rows)}
+}
+
+func TestAtomicReviewConcurrentConnections(t *testing.T){
+ path:=filepath.Join(t.TempDir(),"atomic.sqlite")
+ db1,err:=sql.Open("sqlite",path);if err!=nil{t.Fatal(err)}
+ defer db1.Close()
+ db2,err:=sql.Open("sqlite",path);if err!=nil{t.Fatal(err)}
+ defer db2.Close()
+ for _,db:=range []*sql.DB{db1,db2}{
+  db.SetMaxOpenConns(1)
+  if _,err:=db.Exec("PRAGMA busy_timeout=10000");err!=nil{t.Fatal(err)}
+  if _,err:=db.Exec("PRAGMA journal_mode=WAL");err!=nil{t.Fatal(err)}
+ }
+ a,err:=NewAtomicReviewStore(db1);if err!=nil{t.Fatal(err)}
+ b,err:=NewAtomicReviewStore(db2);if err!=nil{t.Fatal(err)}
+ const n=30
+ var wg sync.WaitGroup
+ errs:=make(chan error,n)
+ for i:=0;i<n;i++{
+  wg.Add(1)
+  target:=a
+  if i%2!=0{target=b}
+  go func(i int,store *AtomicReviewStore){
+   defer wg.Done()
+   _,_,err:=store.SaveOccurrence(context.Background(),"one-proposal",fmt.Sprintf("candidate-%d",i),"content",time.Now())
+   errs<-err
+  }(i,target)
+ }
+ wg.Wait();close(errs)
+ for err:=range errs{if err!=nil{t.Fatal(err)}}
+ var records,links,count int
+ if err:=db1.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&records);err!=nil{t.Fatal(err)}
+ if err:=db1.QueryRow("SELECT count(*) FROM prototype_atomic_review_links").Scan(&links);err!=nil{t.Fatal(err)}
+ if err:=db1.QueryRow("SELECT seen_count FROM prototype_atomic_review_links WHERE fingerprint='one-proposal'").Scan(&count);err!=nil{t.Fatal(err)}
+ if records!=1||links!=1||count!=n{t.Fatalf("records=%d links=%d count=%d, want 1/1/%d",records,links,count,n)}
 }
