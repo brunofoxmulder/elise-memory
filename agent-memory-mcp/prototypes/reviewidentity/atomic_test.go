@@ -171,3 +171,39 @@ func TestSaveEventRollbackOnDecidedReview(t *testing.T){
  if err:=db.QueryRow("SELECT count(*) FROM prototype_review_events").Scan(&events);err!=nil{t.Fatal(err)}
  if events!=1{t.Fatalf("failed event was committed: %d",events)}
 }
+
+func TestSaveEventConcurrentReplayAcrossConnections(t *testing.T){
+ path:=filepath.Join(t.TempDir(),"events.sqlite")
+ db1,err:=sql.Open("sqlite",path);if err!=nil{t.Fatal(err)}
+ defer db1.Close()
+ db2,err:=sql.Open("sqlite",path);if err!=nil{t.Fatal(err)}
+ defer db2.Close()
+ for _,db:=range []*sql.DB{db1,db2}{
+  db.SetMaxOpenConns(1)
+  if _,err:=db.Exec("PRAGMA busy_timeout=10000");err!=nil{t.Fatal(err)}
+  if _,err:=db.Exec("PRAGMA journal_mode=WAL");err!=nil{t.Fatal(err)}
+ }
+ a,err:=NewAtomicReviewStore(db1);if err!=nil{t.Fatal(err)}
+ b,err:=NewAtomicReviewStore(db2);if err!=nil{t.Fatal(err)}
+ const workers=24
+ errs:=make(chan error,workers)
+ var wg sync.WaitGroup
+ for i:=0;i<workers;i++{
+  wg.Add(1)
+  go func(i int){
+   defer wg.Done()
+   store:=a
+   if i%2==1{store=b}
+   _,n,err:=store.SaveEvent(context.Background(),"same-source-event","same-fingerprint",fmt.Sprintf("m-%d",i),"body",time.Now())
+   if err==nil&&n!=1{err=fmt.Errorf("replayed event counted %d times",n)}
+   errs<-err
+  }(i)
+ }
+ wg.Wait();close(errs)
+ for err:=range errs{if err!=nil{t.Fatal(err)}}
+ var records,events,count int
+ if err:=db1.QueryRow("SELECT count(*) FROM prototype_review_records").Scan(&records);err!=nil{t.Fatal(err)}
+ if err:=db1.QueryRow("SELECT count(*) FROM prototype_review_events").Scan(&events);err!=nil{t.Fatal(err)}
+ if err:=db1.QueryRow("SELECT seen_count FROM prototype_atomic_review_links WHERE fingerprint='same-fingerprint'").Scan(&count);err!=nil{t.Fatal(err)}
+ if records!=1||events!=1||count!=1{t.Fatalf("records=%d events=%d count=%d; want 1/1/1",records,events,count)}
+}
