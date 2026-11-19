@@ -82,23 +82,8 @@ jobs:
       - name: Comparer
         if: env.SKIP != '1'
         run: |
-          python3 - <<'PY'
-          import json
-          a = json.load(open("dev3.json")); b = json.load(open("dev4.json"))
-          print(f"dev.3 Hit@1={a['hit1']}/10 Hit@2={a['hit2']}/10")
-          print(f"dev.4 Hit@1={b['hit1']}/10 Hit@2={b['hit2']}/10")
-          reg, gain = [], []
-          for x, y in zip(a["results"], b["results"]):
-              if x["rank"] == y["rank"]:
-                  continue
-              (gain if (y["rank"] or 99) < (x["rank"] or 99) else reg).append((x["q"], x["rank"], y["rank"]))
-          print("gains:", gain or "aucun")
-          print("régressions:", reg or "aucune")
-          with open("comparaison.md", "w") as f:
-              f.write("| Question | famille | dev.3 | dev.4 |\n|---|---|---|---|\n")
-              for x, y in zip(a["results"], b["results"]):
-                  f.write(f"| {x['q']} | {x['family']} | {x['rank']} | {y['rank']} |\n")
-          PY
+          set -eu
+          python3 dev4/agent-memory-mcp/tests/compare_bench.py dev3.json dev4.json | tee comparaison.md
           cat comparaison.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publier les résultats
