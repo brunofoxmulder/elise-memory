@@ -989,10 +989,10 @@ index 3e3e053..7199642 100644
  	}
  
 diff --git a/internal/server/session_tracker_chat_test.go b/internal/server/session_tracker_chat_test.go
-index 5288893..f64dbeb 100644
+index 5288893..6b1be48 100644
 --- a/internal/server/session_tracker_chat_test.go
 +++ b/internal/server/session_tracker_chat_test.go
-@@ -74,3 +74,18 @@ func TestChatClientSessionIsNotCodingMode(t *testing.T) {
+@@ -74,3 +74,31 @@ func TestChatClientSessionIsNotCodingMode(t *testing.T) {
  		})
  	}
  }
@@ -1009,6 +1009,19 @@ index 5288893..f64dbeb 100644
 +	}
 +	if isCodingClient("some-chat-app") {
 +		t.Fatalf("an unknown client must not be treated as a coding agent")
++	}
++}
++
++// C6: the textual as_of output must distinguish an undated answer, otherwise a
++// reader takes "valid at <date>" for a dated fact when no date was ever recorded.
++func TestFormatRecallAsOfStatesUndeterminedValidity(t *testing.T) {
++	undated := &memory.SearchResult{Memory: &memory.Memory{
++		ID: "undated", Type: memory.TypeSemantic, Title: "Fiche sans date",
++		Metadata: map[string]string{memory.MetadataValidityState: memory.ValidityUndetermined},
++	}, Score: 0.4}
++	text := formatRecallAsOf([]*memory.SearchResult{undated}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
++	if !strings.Contains(text, "undetermined") {
++		t.Fatalf("undated result must be flagged as undetermined, got:\n%s", text)
 +	}
 +}
 diff --git a/internal/server/tools_annotations.go b/internal/server/tools_annotations.go
@@ -1415,3 +1428,21 @@ index 11dd75e..54b356b 100644
 +		t.Fatalf("main (non-steward) tool defs = %d, want 42", len(mainToolDefs()))
  	}
  }
+diff --git a/internal/server/tools_steward.go b/internal/server/tools_steward.go
+index 61aea11..cc7f2be 100644
+--- a/internal/server/tools_steward.go
++++ b/internal/server/tools_steward.go
+@@ -410,6 +410,13 @@ func formatRecallAsOf(results []*memory.SearchResult, asOf time.Time) string {
+ 		if rev := r.Memory.Metadata[memory.MetadataContentAsOfRevision]; rev != "" {
+ 			fmt.Fprintf(&sb, "   Text as of the date (revision %s); the current text differs\n", rev)
+ 		}
++		// A record with no recorded effective date is not "valid since
++		// forever": saying nothing would let the reader take an undated answer
++		// for a dated one. The JSON carries validity_state; the text must say
++		// it too, because the text is what a human reads.
++		if r.Memory.ValidFrom == nil && r.Memory.ValidUntil == nil {
++			fmt.Fprintf(&sb, "   Validity: undetermined (no effective date recorded — this does not mean it applied then)\n")
++		}
+ 		if r.Memory.ValidFrom != nil {
+ 			fmt.Fprintf(&sb, "   Valid from: %s", r.Memory.ValidFrom.Format("2006-01-02"))
+ 		}
