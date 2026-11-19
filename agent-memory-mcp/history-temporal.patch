@@ -989,10 +989,10 @@ index 3e3e053..7199642 100644
  	}
  
 diff --git a/internal/server/session_tracker_chat_test.go b/internal/server/session_tracker_chat_test.go
-index 5288893..6b1be48 100644
+index 5288893..38a0fb2 100644
 --- a/internal/server/session_tracker_chat_test.go
 +++ b/internal/server/session_tracker_chat_test.go
-@@ -74,3 +74,31 @@ func TestChatClientSessionIsNotCodingMode(t *testing.T) {
+@@ -74,3 +74,47 @@ func TestChatClientSessionIsNotCodingMode(t *testing.T) {
  		})
  	}
  }
@@ -1014,6 +1014,11 @@ index 5288893..6b1be48 100644
 +
 +// C6: the textual as_of output must distinguish an undated answer, otherwise a
 +// reader takes "valid at <date>" for a dated fact when no date was ever recorded.
++func ptrTimeUTC(y int, m time.Month, d int) *time.Time {
++	t := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
++	return &t
++}
++
 +func TestFormatRecallAsOfStatesUndeterminedValidity(t *testing.T) {
 +	undated := &memory.SearchResult{Memory: &memory.Memory{
 +		ID: "undated", Type: memory.TypeSemantic, Title: "Fiche sans date",
@@ -1022,6 +1027,17 @@ index 5288893..6b1be48 100644
 +	text := formatRecallAsOf([]*memory.SearchResult{undated}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
 +	if !strings.Contains(text, "undetermined") {
 +		t.Fatalf("undated result must be flagged as undetermined, got:\n%s", text)
++	}
++
++	// A record closed at a known date but never given a start is undetermined at
++	// the front: silence there would read as "valid since forever".
++	halfKnown := &memory.SearchResult{Memory: &memory.Memory{
++		ID: "half", Type: memory.TypeSemantic, Title: "Fiche à fin connue",
++		ValidUntil: ptrTimeUTC(2026, 5, 1),
++	}, Score: 0.3}
++	text = formatRecallAsOf([]*memory.SearchResult{halfKnown}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
++	if !strings.Contains(text, "start undetermined") {
++		t.Fatalf("a closed window with no start must be flagged, got:\n%s", text)
 +	}
 +}
 diff --git a/internal/server/tools_annotations.go b/internal/server/tools_annotations.go
@@ -1429,10 +1445,10 @@ index 11dd75e..54b356b 100644
  	}
  }
 diff --git a/internal/server/tools_steward.go b/internal/server/tools_steward.go
-index 61aea11..cc7f2be 100644
+index 61aea11..88c42bc 100644
 --- a/internal/server/tools_steward.go
 +++ b/internal/server/tools_steward.go
-@@ -410,6 +410,13 @@ func formatRecallAsOf(results []*memory.SearchResult, asOf time.Time) string {
+@@ -410,14 +410,22 @@ func formatRecallAsOf(results []*memory.SearchResult, asOf time.Time) string {
  		if rev := r.Memory.Metadata[memory.MetadataContentAsOfRevision]; rev != "" {
  			fmt.Fprintf(&sb, "   Text as of the date (revision %s); the current text differs\n", rev)
  		}
@@ -1440,9 +1456,23 @@ index 61aea11..cc7f2be 100644
 +		// forever": saying nothing would let the reader take an undated answer
 +		// for a dated one. The JSON carries validity_state; the text must say
 +		// it too, because the text is what a human reads.
-+		if r.Memory.ValidFrom == nil && r.Memory.ValidUntil == nil {
-+			fmt.Fprintf(&sb, "   Validity: undetermined (no effective date recorded — this does not mean it applied then)\n")
++		if r.Memory.ValidFrom == nil {
++			// The start of the window is what the reader needs: a record that
++			// ends at a known date but began at none is still undetermined at
++			// the front. Printing nothing would let "valid at <date>" pass for
++			// a dated answer.
++			fmt.Fprintf(&sb, "   Validity: start undetermined (no effective date recorded — this does not mean it applied then)\n")
 +		}
  		if r.Memory.ValidFrom != nil {
- 			fmt.Fprintf(&sb, "   Valid from: %s", r.Memory.ValidFrom.Format("2006-01-02"))
+-			fmt.Fprintf(&sb, "   Valid from: %s", r.Memory.ValidFrom.Format("2006-01-02"))
++			fmt.Fprintf(&sb, "   Valid from: %s\n", r.Memory.ValidFrom.Format("2006-01-02"))
  		}
+ 		if r.Memory.ValidUntil != nil {
+-			fmt.Fprintf(&sb, " until: %s", r.Memory.ValidUntil.Format("2006-01-02"))
+-		}
+-		if r.Memory.ValidFrom != nil || r.Memory.ValidUntil != nil {
+-			sb.WriteByte('\n')
++			fmt.Fprintf(&sb, "   Valid until: %s\n", r.Memory.ValidUntil.Format("2006-01-02"))
+ 		}
+ 	}
+ 	return sb.String()
