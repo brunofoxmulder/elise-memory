@@ -1,0 +1,230 @@
+diff --git a/internal/sessionclose/plan.go b/internal/sessionclose/plan.go
+index 0533ca2..f5735e0 100644
+--- a/internal/sessionclose/plan.go
++++ b/internal/sessionclose/plan.go
+@@ -70,6 +70,13 @@ func (s *Service) planActions(ctx context.Context, summary memory.SessionSummary
+ 		if memory.IsSessionSummaryMemory(item) {
+ 			continue
+ 		}
++		// CH-REVIEWQ-20261118 / DEC-REVIEWQ-001 piece 1: a review-queue card is
++		// a pointer into the queue, not knowledge. Leaving cards in the target
++		// pool let a proposal target another card ("Review queue / ..."), which
++		// made the queue grow by feeding on itself.
++		if memory.IsReviewQueueMemory(item) {
++			continue
++		}
+ 		filteredExisting = append(filteredExisting, item)
+ 	}
+ 
+diff --git a/internal/sessionclose/plan_review_targets_test.go b/internal/sessionclose/plan_review_targets_test.go
+new file mode 100644
+index 0000000..1655973
+--- /dev/null
++++ b/internal/sessionclose/plan_review_targets_test.go
+@@ -0,0 +1,206 @@
++package sessionclose
++
++import (
++	"context"
++	"testing"
++
++	"github.com/ipiton/agent-memory-mcp/internal/memory"
++)
++
++// CH-REVIEWQ-20261118 / DEC-REVIEWQ-001 piece 1.
++//
++// A review-queue card is a pointer into the review queue, not knowledge. It
++// used to stay in the target pool, so a new proposal whose text matched the
++// card's text selected the card as its target ("Review queue / ..."): the
++// queue fed on itself and the same proposal produced card after card.
++//
++// These tests pin the two sides of the fix: cards are never chosen, ordinary
++// knowledge remains eligible, and a proposal with nothing to match keeps an
++// empty target instead of borrowing one.
++
++const (
++	rqContext = "maison-cognitive"
++	rqTitle   = "Volets salon — objectif et règles de fonctionnement"
++	rqContent = "Le volet salon suit des paliers de luminosité avec une correction solaire selon l'azimut et l'élévation."
++)
++
++// seedKnowledge stores an ordinary engineering memory: it must stay eligible.
++func seedKnowledge(t *testing.T, store *memory.Store, title, content string) *memory.Memory {
++	t.Helper()
++	m := &memory.Memory{
++		Title:    title,
++		Content:  content,
++		Type:     memory.TypeSemantic,
++		Context:  rqContext,
++		Tags:     []string{"caveat"},
++		Metadata: map[string]string{memory.MetadataEntity: "caveat"},
++	}
++	if err := store.Store(context.Background(), m); err != nil {
++		t.Fatalf("store knowledge: %v", err)
++	}
++	return m
++}
++
++// seedReviewCard stores a review-queue card with the same shape the generator
++// writes, including the "Review queue / " title prefix.
++func seedReviewCard(t *testing.T, store *memory.Store, title, content string) *memory.Memory {
++	t.Helper()
++	m := &memory.Memory{
++		Title:    title,
++		Content:  content,
++		Type:     memory.TypeWorking,
++		Context:  rqContext,
++		Tags:     []string{"caveat", "review-queue", "review:required", "status:review_required"},
++		Metadata: map[string]string{
++			memory.MetadataEntity:         "caveat",
++			memory.MetadataRecordKind:     memory.RecordKindReviewQueueItem,
++			memory.MetadataReviewRequired: "true",
++		},
++	}
++	if err := store.Store(context.Background(), m); err != nil {
++		t.Fatalf("store review card: %v", err)
++	}
++	return m
++}
++
++func planFor(t *testing.T, store *memory.Store, text string) []CandidateAction {
++	t.Helper()
++	svc := New(store)
++	result, err := svc.Analyze(context.Background(), AnalyzeRequest{
++		Summary: memory.SessionSummary{Context: rqContext, Summary: text},
++		DryRun:  true,
++	})
++	if err != nil {
++		t.Fatalf("Analyze: %v", err)
++	}
++	return result.Actions
++}
++
++func targetOf(t *testing.T, actions []CandidateAction) (string, CandidateAction) {
++	t.Helper()
++	if len(actions) == 0 {
++		t.Fatalf("expected at least one action, got none")
++	}
++	return actions[0].TargetMemoryID, actions[0]
++}
++
++// TestReviewCardIsNeverATarget is the regression itself: with a card and an
++// ordinary memory both matching the proposal, the ordinary memory must win.
++func TestReviewCardIsNeverATarget(t *testing.T) {
++	svc, store := newTestService(t)
++	_ = svc
++
++	knowledge := seedKnowledge(t, store, rqTitle, rqContent)
++	card := seedReviewCard(t, store, "Review queue / "+rqTitle, rqContent)
++
++	actions := planFor(t, store, "Caveat: "+rqContent)
++	target, action := targetOf(t, actions)
++
++	if target == card.ID {
++		t.Fatalf("review card %s was chosen as target; the queue is feeding on itself", card.ID)
++	}
++	if target != knowledge.ID {
++		t.Fatalf("target = %q, want the ordinary memory %q (trace: %v)", target, knowledge.ID, action.DecisionTrace)
++	}
++}
++
++// TestReviewCardAloneLeavesNoTarget covers the case where only a card matches:
++// the proposal must stay targetless rather than borrow the card.
++func TestReviewCardAloneLeavesNoTarget(t *testing.T) {
++	_, store := newTestService(t)
++
++	card := seedReviewCard(t, store, "Review queue / "+rqTitle, rqContent)
++
++	actions := planFor(t, store, "Caveat: "+rqContent)
++	target, action := targetOf(t, actions)
++
++	if target != "" {
++		t.Fatalf("target = %q, want empty (card %s must be ignored)", target, card.ID)
++	}
++	if action.Kind != ActionNew {
++		t.Fatalf("kind = %q, want %q", action.Kind, ActionNew)
++	}
++}
++
++// TestProposalWithoutMatchKeepsEmptyTarget is the pre-existing behaviour that
++// must not regress: nothing stored, nothing to target.
++func TestProposalWithoutMatchKeepsEmptyTarget(t *testing.T) {
++	_, store := newTestService(t)
++
++	actions := planFor(t, store, "Caveat: "+rqContent)
++	target, action := targetOf(t, actions)
++
++	if target != "" {
++		t.Fatalf("target = %q, want empty when nothing matches", target)
++	}
++	if action.Kind != ActionNew {
++		t.Fatalf("kind = %q, want %q", action.Kind, ActionNew)
++	}
++}
++
++// TestWeakTypeMatchStillTargets documents behaviour that the piece-1 change
++// deliberately does not alter: a memory sharing only the engineering type and
++// the context scores 0.45 and becomes the target even with no lexical overlap.
++// It is a precision limit of the target selection, tracked separately from
++// this fix; the test exists so the limit is visible if someone later tightens
++// the scoring.
++func TestWeakTypeMatchStillTargets(t *testing.T) {
++	_, store := newTestService(t)
++
++	unrelated := seedKnowledge(t, store, "Energie et prises — objectifs", "Les heures creuses couvrent 22h30 à 06h30.")
++
++	actions := planFor(t, store, "Caveat: "+rqContent)
++	target, _ := targetOf(t, actions)
++
++	if target != unrelated.ID {
++		t.Fatalf("target = %q, want %q (same type + same context only)", target, unrelated.ID)
++	}
++}
++
++// TestOrdinaryMemoryStaysEligibleInSameContext pins that the fix narrows the
++// pool to cards only and does not silence ordinary knowledge.
++func TestOrdinaryMemoryStaysEligibleInSameContext(t *testing.T) {
++	_, store := newTestService(t)
++
++	knowledge := seedKnowledge(t, store, rqTitle, rqContent)
++	_ = seedKnowledge(t, store, "Météo — sources et capteurs", "La station publique de Dammarie fournit température et humidité.")
++
++	actions := planFor(t, store, "Caveat: "+rqContent)
++	target, _ := targetOf(t, actions)
++
++	if target != knowledge.ID {
++		t.Fatalf("target = %q, want %q", target, knowledge.ID)
++	}
++}
++
++// TestSameContextCardIsNotKnowledge is the discriminating case. Both records
++// live in the same context and carry the same text: the card must stay out of
++// the target pool while an ordinary memory is picked. Same context, same
++// wording, opposite outcome — the filter is what makes the difference, not the
++// context nor the phrasing.
++func TestSameContextCardIsNotKnowledge(t *testing.T) {
++	_, store := newTestService(t)
++
++	card := seedReviewCard(t, store, "Review queue / "+rqTitle, rqContent)
++
++	actions := planFor(t, store, "Caveat: "+rqContent)
++	target, action := targetOf(t, actions)
++
++	if target != "" {
++		t.Fatalf("target = %q, want empty: card %s must not be a target", target, card.ID)
++	}
++	if action.Kind != ActionNew {
++		t.Fatalf("kind = %q, want %q", action.Kind, ActionNew)
++	}
++
++	// Control: the very same text, held by an ordinary memory of the same
++	// context, does produce a target. Without this half the test would only
++	// show that nothing matched.
++	_, store2 := newTestService(t)
++	knowledge := seedKnowledge(t, store2, rqTitle, rqContent)
++
++	control, _ := targetOf(t, planFor(t, store2, "Caveat: "+rqContent))
++	if control != knowledge.ID {
++		t.Fatalf("control target = %q, want the ordinary memory %q", control, knowledge.ID)
++	}
++}

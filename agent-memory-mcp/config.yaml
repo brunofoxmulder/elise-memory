@@ -1,6 +1,6 @@
 name: Agent Memory MCP
 description: Mémoire partagée — candidate non installable en production sans recette
-version: "0.1.2-dev.2"
+version: "0.1.2-dev.4"
 stage: experimental
 breaking_versions:
   - "0.1.2-dev.2"

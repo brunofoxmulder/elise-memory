@@ -1,0 +1,53 @@
+diff --git a/internal/embedder/embedder.go b/internal/embedder/embedder.go
+index afd602a..347bdf2 100644
+--- a/internal/embedder/embedder.go
++++ b/internal/embedder/embedder.go
+@@ -5,6 +5,7 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"net/http"
++	"os"
+ 	"sort"
+ 	"strings"
+ 	"sync"
+@@ -355,6 +356,27 @@ func (e *Embedder) candidates(task string) []providerCandidate {
+ 	out := make([]providerCandidate, 0, 5)
+ 	add := func(p providerAdapter) {
+ 		name := p.name()
++		// Lock provider selection for the Home Assistant application. An empty
++		// lock preserves the original upstream behaviour for other callers.
++		// Without it, a transient provider failure silently moves the corpus to
++		// another model, and the vectors of two models end up in one bank.
++		switch os.Getenv("MCP_EMBEDDING_PROVIDER_LOCK") {
++		case "", "auto":
++		case "openai":
++			if name != "openai" {
++				return
++			}
++		case "ollama":
++			model := strings.TrimSpace(os.Getenv("MCP_OLLAMA_EMBEDDING_MODEL"))
++			if model == "" {
++				model = defaultOllamaPrimaryModel
++			}
++			if name != "ollama/"+strings.TrimSuffix(model, ":latest") {
++				return
++			}
++		default:
++			return
++		}
+ 		h := e.healthFor(name)
+ 		ok, retried := h.available()
+ 		if !ok {
+diff --git a/internal/server/session_tracker.go b/internal/server/session_tracker.go
+index 022d44c..acaea1d 100644
+--- a/internal/server/session_tracker.go
++++ b/internal/server/session_tracker.go
+@@ -142,7 +142,7 @@ func newSessionTracker(cfg config.Config, store *memory.Store, fileLogger *logge
+ // "codex-mcp-client (via mcp-remote 0.16.x)". A name outside the list is
+ // treated as a chat; an agent missing here loses only the engineering
+ // candidates of its auto-summary, never the summary itself.
+-var codingClientPrefixes = []string{"claude-code", "codex-mcp-client"}
++var codingClientPrefixes = []string{"claude-code", "codex-mcp-client", "hermes-agent"}
+ 
+ func isCodingClient(name string) bool {
+ 	name = strings.ToLower(strings.TrimSpace(name))
