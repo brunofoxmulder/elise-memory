@@ -1,5 +1,5 @@
 diff --git a/internal/embedder/embedder.go b/internal/embedder/embedder.go
-index afd602a..347bdf2 100644
+index afd602a..58e96d1 100644
 --- a/internal/embedder/embedder.go
 +++ b/internal/embedder/embedder.go
 @@ -5,6 +5,7 @@ import (
@@ -10,7 +10,7 @@ index afd602a..347bdf2 100644
  	"sort"
  	"strings"
  	"sync"
-@@ -355,6 +356,27 @@ func (e *Embedder) candidates(task string) []providerCandidate {
+@@ -355,6 +356,35 @@ func (e *Embedder) candidates(task string) []providerCandidate {
  	out := make([]providerCandidate, 0, 5)
  	add := func(p providerAdapter) {
  		name := p.name()
@@ -25,7 +25,15 @@ index afd602a..347bdf2 100644
 +				return
 +			}
 +		case "ollama":
-+			model := strings.TrimSpace(os.Getenv("MCP_OLLAMA_EMBEDDING_MODEL"))
++			// Upstream reads OLLAMA_EMBEDDING_MODEL to select the model; the
++			// MCP_-prefixed name is the one the Home Assistant run script has
++			// always exported. Read both, in that order, so the lock and the
++			// provider agree on a single model instead of silently matching
++			// nothing and leaving the bank without vectors.
++			model := strings.TrimSpace(os.Getenv("OLLAMA_EMBEDDING_MODEL"))
++			if model == "" {
++				model = strings.TrimSpace(os.Getenv("MCP_OLLAMA_EMBEDDING_MODEL"))
++			}
 +			if model == "" {
 +				model = defaultOllamaPrimaryModel
 +			}

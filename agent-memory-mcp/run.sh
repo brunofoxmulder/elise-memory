@@ -75,7 +75,12 @@ if [ "$EMBEDDINGS_ENABLED" = true ]; then
       export MCP_EMBEDDING_PROVIDER_LOCK=ollama
       EMBEDDING_STATUS='Ollama configuré : disponibilité non vérifiée'
       export OLLAMA_BASE_URL="$(jq -r '.ollama_url // "http://127.0.0.1:11434"' "$OPTIONS")"
-      export MCP_OLLAMA_EMBEDDING_MODEL="$(jq -r '.ollama_model // "bge-m3:latest"' "$OPTIONS")"
+      OLLAMA_MODEL="$(jq -r '.ollama_model // "bge-m3:latest"' "$OPTIONS")"
+      # Upstream reads OLLAMA_EMBEDDING_MODEL; the MCP_-prefixed name is what our
+      # provider lock reads. Both must carry the same value, otherwise the lock
+      # filters out every candidate and the bank silently loses its vectors.
+      export OLLAMA_EMBEDDING_MODEL="$OLLAMA_MODEL"
+      export MCP_OLLAMA_EMBEDDING_MODEL="$OLLAMA_MODEL"
       ;;
     *) echo 'Fournisseur d’embeddings inconnu.' >&2; exit 1 ;;
   esac
