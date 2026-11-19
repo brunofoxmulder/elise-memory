@@ -86,10 +86,10 @@ index 0000000..ddd76fe
 +}
 diff --git a/internal/memory/history_temporal_test.go b/internal/memory/history_temporal_test.go
 new file mode 100644
-index 0000000..8be5ee2
+index 0000000..b98b521
 --- /dev/null
 +++ b/internal/memory/history_temporal_test.go
-@@ -0,0 +1,444 @@
+@@ -0,0 +1,493 @@
 +package memory
 +
 +import (
@@ -534,11 +534,60 @@ index 0000000..8be5ee2
 +		t.Fatalf("a refused supersede must not close the predecessor")
 +	}
 +}
++
++// T16 — an archived record leaves the current listings but stays auditable.
++// `list` is what a client sees of the bank: showing archived records there
++// would present withdrawn knowledge as if still in service.
++func TestArchiveHidesFromListButKeepsAuditTrail(t *testing.T) {
++	store := newTestStore(t)
++	m := storeAt(t, store, histT0, "note archivee sur la serre fictive")
++	store.SetClock(func() time.Time { return histT1 })
++	if err := store.Update(context.Background(), m.ID, Update{
++		Content: "note archivee sur la serre fictive, corrigee",
++		Source:  RevisionSourceUpdateMemory,
++	}); err != nil {
++		t.Fatalf("Update: %v", err)
++	}
++	if _, err := store.Archive(context.Background(), m.ID, "plus utile"); err != nil {
++		t.Fatalf("Archive: %v", err)
++	}
++
++	current, err := store.List(context.Background(), Filters{}, 100)
++	if err != nil {
++		t.Fatalf("List: %v", err)
++	}
++	for _, item := range current {
++		if item.ID == m.ID {
++			t.Fatalf("an archived record must not appear in a current listing")
++		}
++	}
++
++	audit, err := store.List(context.Background(), Filters{IncludeArchived: true}, 100)
++	if err != nil {
++		t.Fatalf("List(audit): %v", err)
++	}
++	found := false
++	for _, item := range audit {
++		if item.ID == m.ID {
++			found = true
++		}
++	}
++	if !found {
++		t.Fatalf("include_archived must return the archived record")
++	}
++
++	if revs, err := store.Revisions(context.Background(), m.ID); err != nil || len(revs) != 1 {
++		t.Fatalf("archiving must keep the revision (err=%v, n=%d)", err, len(revs))
++	}
++	if recallIDs(t, store, "note archivee serre fictive", Filters{})[m.ID] {
++		t.Fatalf("an archived record must not answer recall either")
++	}
++}
 diff --git a/internal/memory/memory.go b/internal/memory/memory.go
-index 2e81b1f..d82424c 100644
+index 2e81b1f..97ece72 100644
 --- a/internal/memory/memory.go
 +++ b/internal/memory/memory.go
-@@ -830,6 +830,11 @@ type Filters struct {
+@@ -830,6 +830,17 @@ type Filters struct {
  	Tags          []string  `json:"tags,omitempty"`
  	MinImportance float64   `json:"min_importance,omitempty"`
  	Since         time.Time `json:"since,omitempty"`
@@ -547,11 +596,17 @@ index 2e81b1f..d82424c 100644
 +	// the current state. The records are never deleted, only hidden — as_of and
 +	// List still see them.
 +	IncludeExpired bool `json:"include_expired,omitempty"`
++	// IncludeArchived returns records retired with an explicit status
++	// (archived, revoked). Off by default: an archive is a retirement from
++	// current use, so a listing that shows archived records would present
++	// withdrawn knowledge as if it were still in service. The records are
++	// never deleted — the flag and the revision trail keep them auditable.
++	IncludeArchived bool `json:"include_archived,omitempty"`
  }
  
  // SearchResult wraps a Memory with its relevance score from a search query.
 diff --git a/internal/memory/read.go b/internal/memory/read.go
-index db71fd0..a5a47d0 100644
+index db71fd0..13b97f3 100644
 --- a/internal/memory/read.go
 +++ b/internal/memory/read.go
 @@ -214,6 +214,12 @@ func (ms *Store) recallDecayMultiplier(m *cachedMemory, now time.Time) float64 {
@@ -567,7 +622,7 @@ index db71fd0..a5a47d0 100644
  	if m.Lifecycle == LifecycleCanonical || m.KnowledgeLayer == "canonical" || m.SedimentLayer == LayerCharacter {
  		return 1.0
  	}
-@@ -234,8 +240,61 @@ func (ms *Store) recallDecayMultiplier(m *cachedMemory, now time.Time) float64 {
+@@ -234,8 +240,62 @@ func (ms *Store) recallDecayMultiplier(m *cachedMemory, now time.Time) float64 {
  }
  
  // Recall searches memories by semantic similarity, applying filters and importance weighting.
@@ -575,6 +630,7 @@ index db71fd0..a5a47d0 100644
 +// Two independent gates run before a record can answer:
 +//   - supersession: a record replaced by a live successor describes the past;
 +//   - validity window: a closed valid_until means the fact no longer holds.
++//
 +// The second gate is lifted by Filters.IncludeExpired, because hiding a record
 +// is a retrieval decision, never a deletion: as_of, List and the timeline still
 +// see it.
@@ -630,7 +686,7 @@ index db71fd0..a5a47d0 100644
  }
  
  // isCurrentKnowledge hides superseded entries (temporal replacement after
-@@ -245,7 +304,15 @@ func (ms *Store) Recall(ctx context.Context, query string, filters Filters, limi
+@@ -245,7 +305,15 @@ func (ms *Store) Recall(ctx context.Context, query string, filters Filters, limi
  // stay visible to List/ListLightweight and to the temporal reads. The successor
  // is looked up rather than trusted: Delete does not clear superseded_by on
  // predecessors, and a dangling pointer would bury the entry forever.
@@ -646,6 +702,20 @@ index db71fd0..a5a47d0 100644
  	return m.SupersededBy == "" || !ms.hasMemory(m.SupersededBy)
  }
  
+@@ -516,6 +584,13 @@ func (ms *Store) matchCachedFilters(m *cachedMemory, filters Filters) bool {
+ // 100k-memory recall). For one-off calls with no filter tags, pass nil and
+ // the function falls back to a linear membership scan.
+ func (ms *Store) matchCachedFiltersWithTagSet(m *cachedMemory, filters Filters, filterTagSet map[string]struct{}) bool {
++	// An archived or revoked record is retired from current use: it must not
++	// surface in an ordinary listing, exactly as it does not surface in recall.
++	// Nothing is destroyed — include_archived, as_of and the revision trail are
++	// the audit paths.
++	if !filters.IncludeArchived && isRetiredStatus(m) {
++		return false
++	}
+ 	if filters.Type != "" && m.Type != filters.Type {
+ 		return false
+ 	}
 diff --git a/internal/memory/temporal.go b/internal/memory/temporal.go
 index 9c1431d..6c2c189 100644
 --- a/internal/memory/temporal.go
@@ -1008,7 +1078,7 @@ index 78434fb..93d9b8d 100644
  	if len(grouped) != 8 {
  		t.Errorf("default grouped surface = %d tools, want 8 (6 groups + 2 singletons)", len(grouped))
 diff --git a/internal/server/tools_memory.go b/internal/server/tools_memory.go
-index 2314002..21c52ac 100644
+index 2314002..97cccb2 100644
 --- a/internal/server/tools_memory.go
 +++ b/internal/server/tools_memory.go
 @@ -6,6 +6,7 @@ import (
@@ -1073,7 +1143,17 @@ index 2314002..21c52ac 100644
  }
  
  func (s *MCPServer) callListMemories(args map[string]any) (any, *rpcError) {
-@@ -444,6 +469,89 @@ func (s *MCPServer) callMergeDuplicates(args map[string]any) (any, *rpcError) {
+@@ -330,6 +355,9 @@ func (s *MCPServer) callListMemories(args map[string]any) (any, *rpcError) {
+ 	if p.Context != "" {
+ 		filters.Context = strings.TrimSpace(p.Context)
+ 	}
++	if v, ok := args["include_archived"].(bool); ok && v {
++		filters.IncludeArchived = true
++	}
+ 
+ 	memories, err := s.memoryStore.List(context.Background(), filters, limit)
+ 	if err != nil {
+@@ -444,6 +472,89 @@ func (s *MCPServer) callMergeDuplicates(args map[string]any) (any, *rpcError) {
  	)), nil
  }
  
@@ -1163,7 +1243,7 @@ index 2314002..21c52ac 100644
  func (s *MCPServer) callMarkOutdated(args map[string]any) (any, *rpcError) {
  	if err := s.requireMemoryStore(); err != nil {
  		return nil, err
-@@ -455,17 +563,33 @@ func (s *MCPServer) callMarkOutdated(args map[string]any) (any, *rpcError) {
+@@ -455,17 +566,33 @@ func (s *MCPServer) callMarkOutdated(args map[string]any) (any, *rpcError) {
  	}
  	reason, _ := getString(args, "reason")
  	supersededBy, _ := getString(args, "superseded_by")
@@ -1200,7 +1280,7 @@ index 2314002..21c52ac 100644
  	)), nil
  }
 diff --git a/internal/server/tools_schemas_memory.go b/internal/server/tools_schemas_memory.go
-index 2c942ce..bce3850 100644
+index 2c942ce..953bbea 100644
 --- a/internal/server/tools_schemas_memory.go
 +++ b/internal/server/tools_schemas_memory.go
 @@ -67,6 +67,10 @@ func memoryToolDefs() []tool {
@@ -1238,7 +1318,18 @@ index 2c942ce..bce3850 100644
  				},
  				"required": []string{"id"},
  			},
-@@ -188,6 +200,38 @@ func memoryToolDefs() []tool {
+@@ -158,6 +170,10 @@ func memoryToolDefs() []tool {
+ 						"minimum":     1,
+ 						"maximum":     100,
+ 					},
++					"include_archived": map[string]any{
++						"type":        "boolean",
++						"description": "Also return archived and revoked records (audit view). Off by default: an archived record is retired from current use.",
++					},
+ 				},
+ 			},
+ 		},
+@@ -188,6 +204,38 @@ func memoryToolDefs() []tool {
  				"required": []string{"primary_id", "duplicate_ids"},
  			},
  		},
@@ -1277,7 +1368,7 @@ index 2c942ce..bce3850 100644
  		{
  			Name:        "mark_outdated",
  			Description: "Mark a memory as outdated or superseded so it is downranked in future recall",
-@@ -206,6 +250,19 @@ func memoryToolDefs() []tool {
+@@ -206,6 +254,19 @@ func memoryToolDefs() []tool {
  						"type":        "string",
  						"description": "Optional newer memory ID that supersedes this one",
  					},
