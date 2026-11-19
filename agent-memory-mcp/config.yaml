@@ -4,6 +4,7 @@ version: "0.1.2-dev.4"
 stage: experimental
 breaking_versions:
   - "0.1.2-dev.2"
+  - "0.1.2-dev.3"
 slug: agent_memory_mcp
 init: false
 timeout: 60
